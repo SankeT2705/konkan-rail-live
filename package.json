@@ -1,0 +1,24 @@
+{
+  "name": "konkan-rail-live",
+  "version": "1.0.0",
+  "description": "Real-time train position tracker for the scenic Konkan Railway route",
+  "private": true,
+  "scripts": {
+    "dev": "node dev.js",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "test": "npm --prefix backend test",
+    "start": "npm --prefix backend start"
+  },
+  "keywords": [
+    "konkan-railway",
+    "train-tracker",
+    "indian-railways",
+    "real-time",
+    "react",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC"
+}

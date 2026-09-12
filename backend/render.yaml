@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: konkan-rail-live-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: SCRAPE_INTERVAL_MS
+        value: 30000
+      - key: CORS_ORIGIN
+        value: https://your-frontend.vercel.app

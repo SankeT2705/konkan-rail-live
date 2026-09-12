@@ -1,0 +1,297 @@
+/* ── Google Fonts ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+/* ── Design Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Train category colors */
+  --clr-passenger:  #3b82f6;   /* blue */
+  --clr-express:    #ef4444;   /* red */
+  --clr-superfast:  #22c55e;   /* green */
+  --clr-premium:    #d946ef;   /* magenta */
+  --clr-goods:      #64748b;   /* slate */
+
+  /* Dark theme (default) */
+  --bg-base:        #080d1a;
+  --bg-surface:     #0f1629;
+  --bg-elevated:    #1a2340;
+  --bg-card:        rgba(255,255,255,0.04);
+  --bg-card-hover:  rgba(255,255,255,0.07);
+
+  --border-subtle:  rgba(255,255,255,0.08);
+  --border-focus:   rgba(99,179,237,0.5);
+
+  --text-primary:   #f0f6ff;
+  --text-secondary: #8899bb;
+  --text-muted:     #4a5980;
+
+  --accent-blue:    #3b9eff;
+  --accent-teal:    #2dd4bf;
+  --accent-amber:   #f59e0b;
+
+  --glow-blue:      0 0 20px rgba(59,158,255,0.35);
+  --glow-teal:      0 0 20px rgba(45,212,191,0.35);
+  --glow-green:     0 0 16px rgba(34,197,94,0.4);
+  --glow-red:       0 0 16px rgba(239,68,68,0.4);
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  --transition-fast: 150ms ease;
+  --transition-mid:  250ms ease;
+}
+
+/* ── Light theme ────────────────────────────────────────────────────────────── */
+[data-theme='light'] {
+  --bg-base:        #f0f4ff;
+  --bg-surface:     #ffffff;
+  --bg-elevated:    #e8eeff;
+  --bg-card:        rgba(255,255,255,0.85);
+  --bg-card-hover:  rgba(255,255,255,0.95);
+  --border-subtle:  rgba(0,0,0,0.1);
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+}
+
+/* ── High contrast ──────────────────────────────────────────────────────────── */
+[data-theme='high-contrast'] {
+  --bg-base:        #000000;
+  --bg-surface:     #0a0a0a;
+  --bg-elevated:    #111111;
+  --bg-card:        rgba(255,255,255,0.06);
+  --border-subtle:  rgba(255,255,255,0.25);
+  --text-primary:   #ffffff;
+  --text-secondary: #cccccc;
+  --text-muted:     #888888;
+  --accent-blue:    #60c0ff;
+  --accent-teal:    #4ff0dc;
+}
+
+/* ── Base resets ────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 { font-weight: 700; line-height: 1.2; margin: 0; }
+p { margin: 0; }
+code, pre { font-family: var(--font-mono); }
+
+/* ── Scrollbar (webkit) ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-surface); }
+::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Utility classes ────────────────────────────────────────────────────────── */
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--border-subtle);
+}
+
+.glass-hover { transition: background var(--transition-fast); }
+.glass-hover:hover { background: var(--bg-card-hover); }
+
+.surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.elevated { background: var(--bg-elevated); }
+
+/* ── Button base ────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+  outline: none;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-teal));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59,158,255,0.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59,158,255,0.45); }
+.btn-primary:active { transform: translateY(0); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.btn-ghost:hover { background: var(--bg-card); color: var(--text-primary); }
+
+/* ── Category badges ───────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.badge-passenger  { background: rgba(59,130,246,0.2);  color: var(--clr-passenger);  border: 1px solid rgba(59,130,246,0.3);  }
+.badge-express    { background: rgba(239,68,68,0.2);   color: var(--clr-express);    border: 1px solid rgba(239,68,68,0.3);   }
+.badge-superfast  { background: rgba(34,197,94,0.2);   color: var(--clr-superfast);  border: 1px solid rgba(34,197,94,0.3);   }
+.badge-premium    { background: rgba(217,70,239,0.2);  color: var(--clr-premium);    border: 1px solid rgba(217,70,239,0.3);  }
+.badge-goods      { background: rgba(100,116,139,0.2); color: var(--clr-goods);      border: 1px solid rgba(100,116,139,0.3); }
+
+/* ── Delay text colors ──────────────────────────────────────────────────────── */
+.delay-positive { color: #ef4444; }
+.delay-negative { color: #22c55e; }
+.delay-zero     { color: var(--text-muted); }
+
+/* ── Skeleton loader ────────────────────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-elevated) 25%,
+    var(--bg-card) 50%,
+    var(--bg-elevated) 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.5s infinite linear;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Train marker pulse (new data) ──────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 6px 2px currentColor; opacity: 1; }
+  50%       { box-shadow: 0 0 14px 6px currentColor; opacity: 0.85; }
+}
+
+.pulse-glow { animation: pulse-glow 1.5s ease-in-out 3; }
+
+/* ── Slide-in panel ─────────────────────────────────────────────────────────── */
+.panel-backdrop {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+/* ── Stale data banner ──────────────────────────────────────────────────────── */
+.stale-banner {
+  background: linear-gradient(90deg, rgba(245,158,11,0.15), rgba(245,158,11,0.08));
+  border-bottom: 1px solid rgba(245,158,11,0.3);
+  color: var(--accent-amber);
+  font-size: 0.8125rem;
+  text-align: center;
+  padding: 8px 16px;
+}
+
+/* ── Track view ─────────────────────────────────────────────────────────────── */
+.track-container {
+  overflow-x: auto;
+  overflow-y: visible;
+  cursor: grab;
+  user-select: none;
+  position: relative;
+}
+.track-container:active { cursor: grabbing; }
+
+.track-line {
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-teal), var(--accent-blue));
+  border-radius: 2px;
+  position: relative;
+  box-shadow: 0 0 8px rgba(45,212,191,0.4);
+}
+
+/* ── Leaflet override ───────────────────────────────────────────────────────── */
+.leaflet-container {
+  background: #080d1a !important;
+  font-family: var(--font-sans) !important;
+}
+
+.custom-leaflet-popup .leaflet-popup-content-wrapper {
+  background: #0b1120 !important;
+  color: #f8fafc !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 0, 0, 0.5) !important;
+  padding: 4px !important;
+}
+.custom-leaflet-popup .leaflet-popup-content {
+  margin: 6px 8px !important;
+  line-height: 1.4 !important;
+}
+.custom-leaflet-popup .leaflet-popup-tip {
+  background: #0b1120 !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
+}
+.custom-leaflet-popup .leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  padding: 8px !important;
+  font-size: 16px !important;
+}
+
+/* ── Responsive helpers ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .hide-mobile { display: none !important; }
+  .train-detail-drawer {
+    width: 100vw !important;
+    max-height: 88vh !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    border-left: none !important;
+    border-top: 1px solid var(--border-subtle) !important;
+  }
+}
+@media (min-width: 641px) {
+  .show-mobile-only { display: none !important; }
+  .train-detail-drawer {
+    width: min(440px, 100vw) !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    right: 0 !important;
+  }
+}
+
+/* ── Focus visible ──────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

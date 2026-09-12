@@ -1,0 +1,324 @@
+import type { TrainPosition } from '../types';
+
+export interface TrainEndpoints {
+  sourceCode: string;
+  sourceName: string;
+  destCode: string;
+  destName: string;
+  routeSummary: string;
+  totalDistanceKm: number;
+}
+
+export interface RouteProgress {
+  sourceCode: string;
+  sourceName: string;
+  destCode: string;
+  destName: string;
+  currentStationName: string;
+  totalRouteKm: number;
+  coveredKm: number;
+  remainingKm: number;
+  progressPercent: number;
+  routeSummary: string;
+  direction: 'up' | 'down';
+  krSectorKm: number;
+}
+
+export const STATION_NAMES: Record<string, { name: string; nameHi: string; kmOffset: number }> = {
+  // Northern Terminals (North of Roha = negative relative to Roha km 0)
+  CDG:  { name: 'Chandigarh', nameHi: 'चंदिगढ', kmOffset: -1750 },
+  ASR:  { name: 'Amritsar', nameHi: 'अमृतसर', kmOffset: -1800 },
+  HSR:  { name: 'Hisar (Haryana)', nameHi: 'हिसार', kmOffset: -1650 },
+  NZM:  { name: 'Delhi Nizamuddin', nameHi: 'हजरत निजामुद्दीन', kmOffset: -1500 },
+  NDLS: { name: 'New Delhi', nameHi: 'नवी दिल्ली', kmOffset: -1500 },
+  JAM:  { name: 'Jamnagar (Gujarat)', nameHi: 'जामनगर', kmOffset: -900 },
+  ADI:  { name: 'Ahmedabad Jn', nameHi: 'अहमदाबाद', kmOffset: -630 },
+  BRC:  { name: 'Vadodara Jn', nameHi: 'वडोदरा', kmOffset: -530 },
+  ST:   { name: 'Surat', nameHi: 'सूरत', kmOffset: -400 },
+  BSR:  { name: 'Vasai Road', nameHi: 'वसई रोड', kmOffset: -180 },
+  CSMT: { name: 'Mumbai CSMT', nameHi: 'मुंबई सीएसएमटी', kmOffset: -140 },
+  DR:   { name: 'Dadar (Mumbai)', nameHi: 'दादर', kmOffset: -135 },
+  LTT:  { name: 'Mumbai LTT', nameHi: 'लोकमान्य टिळक टर्मिनस', kmOffset: -130 },
+  MMCT: { name: 'Mumbai Central', nameHi: 'मुंबई सेंट्रल', kmOffset: -140 },
+  BDTS: { name: 'Bandra Terminus', nameHi: 'बांद्रा टर्मिनस', kmOffset: -135 },
+  PUNE: { name: 'Pune Jn', nameHi: 'पुणे', kmOffset: -150 },
+  PNVL: { name: 'Panvel', nameHi: 'पनवेल', kmOffset: -70 },
+
+  // Konkan Railway Route Stations (km 0 to 738)
+  ROHA: { name: 'Roha', nameHi: 'रोहा', kmOffset: 0 },
+  KLAD: { name: 'Kolad', nameHi: 'कोलाड', kmOffset: 26 },
+  INDP: { name: 'Indapur', nameHi: 'इंदापूर', kmOffset: 36 },
+  MQC:  { name: 'Mangaon', nameHi: 'माणगाव', kmOffset: 45 },
+  VIR:  { name: 'Veer', nameHi: 'वीर', kmOffset: 66 },
+  KHED: { name: 'Khed', nameHi: 'खेड', kmOffset: 112 },
+  CHI:  { name: 'Chiplun', nameHi: 'चिपळूण', kmOffset: 135 },
+  SWRD: { name: 'Sawarda', nameHi: 'सावर्डा', kmOffset: 155 },
+  RN:   { name: 'Ratnagiri', nameHi: 'रत्नागिरी', kmOffset: 211 },
+  ADVL: { name: 'Adavali', nameHi: 'आडवली', kmOffset: 230 },
+  RAJP: { name: 'Rajapur Road', nameHi: 'राजापूर रोड', kmOffset: 258 },
+  VBW:  { name: 'Vaibhavwadi Road', nameHi: 'वैभववाडी रोड', kmOffset: 279 },
+  VBWR: { name: 'Vaibhavwadi Road', nameHi: 'वैभववाडी रोड', kmOffset: 279 },
+  KKNV: { name: 'Kankavli', nameHi: 'कणकवली', kmOffset: 308 },
+  SIND: { name: 'Sindhudurg', nameHi: 'सिंधुदुर्ग', kmOffset: 320 },
+  KUDL: { name: 'Kudal', nameHi: 'कुडाळ', kmOffset: 330 },
+  SWV:  { name: 'Sawantwadi Road', nameHi: 'सावंतवाडी रोड', kmOffset: 354 },
+  SAWI: { name: 'Sawantwadi Road', nameHi: 'सावंतवाडी रोड', kmOffset: 354 },
+  PERN: { name: 'Pernem', nameHi: 'पेडणे', kmOffset: 376 },
+  THVM: { name: 'Thivim (Goa)', nameHi: 'थिवीम', kmOffset: 395 },
+  KRML: { name: 'Karmali (Goa)', nameHi: 'करमाळी', kmOffset: 408 },
+  MAO:  { name: 'Madgaon Jn (Goa)', nameHi: 'मडगाव जंक्शन', kmOffset: 436 },
+  VS:   { name: 'Vasco-da-Gama', nameHi: 'वास्को-द-गामा', kmOffset: 460 },
+  KAWR: { name: 'Karwar', nameHi: 'कारवार', kmOffset: 493 },
+  GOKR: { name: 'Gokarna Road', nameHi: 'गोकर्ण रोड', kmOffset: 525 },
+  KT:   { name: 'Kumta', nameHi: 'कुमटा', kmOffset: 550 },
+  MRDW: { name: 'Murdeshwar', nameHi: 'मुरुडेश्वर', kmOffset: 585 },
+  BTKL: { name: 'Bhatkal', nameHi: 'भटकल', kmOffset: 614 },
+  BYNR: { name: 'Byndoor', nameHi: 'बैन्दूर', kmOffset: 630 },
+  KUDA: { name: 'Kundapura', nameHi: 'कुन्दापुर', kmOffset: 655 },
+  UD:   { name: 'Udupi', nameHi: 'उडुपी', kmOffset: 686 },
+  MULK: { name: 'Mulki', nameHi: 'मुल्की', kmOffset: 720 },
+  SRTK: { name: 'Surathkal', nameHi: 'सुरतकल', kmOffset: 738 },
+
+  // Southern Terminals (South of Surathkal = positive offset)
+  MAJN: { name: 'Mangaluru Jn', nameHi: 'मंगळूरु जंक्शन', kmOffset: 760 },
+  MAQ:  { name: 'Mangaluru Central', nameHi: 'मंगळूरु सेंट्रल', kmOffset: 765 },
+  CAN:  { name: 'Kannur', nameHi: 'कण्णूर', kmOffset: 890 },
+  CLT:  { name: 'Kozhikode', nameHi: 'कोळिकोड', kmOffset: 980 },
+  SRR:  { name: 'Shoranur Jn', nameHi: 'शोरणूर', kmOffset: 1060 },
+  TCR:  { name: 'Thrissur', nameHi: 'तृशूर', kmOffset: 1095 },
+  ERS:  { name: 'Ernakulam (Kochi)', nameHi: 'एर्नाकुलम', kmOffset: 1170 },
+  ALLP: { name: 'Alappuzha', nameHi: 'अलप्पुळा', kmOffset: 1230 },
+  KTYM: { name: 'Kottayam', nameHi: 'कोट्टायम', kmOffset: 1230 },
+  QLN:  { name: 'Kollam Jn', nameHi: 'कोल्लम', kmOffset: 1330 },
+  TVC:  { name: 'Thiruvananthapuram', nameHi: 'तिरुवनंतपुरम', kmOffset: 1390 },
+  TVCN: { name: 'Kochuveli (Trivandrum)', nameHi: 'कोचुवेली', kmOffset: 1385 },
+  KCVL: { name: 'Kochuveli (Trivandrum)', nameHi: 'कोचुवेली', kmOffset: 1385 },
+  TEN:  { name: 'Tirunelveli', nameHi: 'तिरुनेलवेली', kmOffset: 1540 },
+  CBE:  { name: 'Coimbatore', nameHi: 'कोइम्बतूर', kmOffset: 1160 },
+};
+
+/**
+ * Extract human-readable source and destination from train name or code conventions.
+ */
+export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'): TrainEndpoints {
+  const name = train.trainName.toUpperCase();
+
+  // 1. Try pattern: "SRC-DEST" or "SRC - DEST" e.g. "CSMT-SWV SPL", "SWV-LTT SPL", "MAJN-ADI SPECIA"
+  const match = name.match(/\b([A-Z]{2,5})\s*[-–]\s*([A-Z]{2,5})\b/);
+  if (match) {
+    const srcCode = match[1];
+    const destCode = match[2];
+    const src = STATION_NAMES[srcCode];
+    const dest = STATION_NAMES[destCode];
+
+    const srcName = src ? (lang === 'hi' ? src.nameHi : src.name) : srcCode;
+    const destName = dest ? (lang === 'hi' ? dest.nameHi : dest.name) : destCode;
+    const totalDistance = (src && dest) ? Math.abs(dest.kmOffset - src.kmOffset) : 738;
+
+    return {
+      sourceCode: srcCode,
+      sourceName: srcName,
+      destCode: destCode,
+      destName: destName,
+      routeSummary: `${srcName} → ${destName}`,
+      totalDistanceKm: totalDistance,
+    };
+  }
+
+  // 2. Named train heuristics
+  if (name.includes('KERALA') && name.includes('KRANTI')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'CDG' : 'KCVL',
+      sourceName: isDown ? (lang === 'hi' ? 'चंदिगढ' : 'Chandigarh') : (lang === 'hi' ? 'कोचुवेली (केरळ)' : 'Kochuveli (Kerala)'),
+      destCode: isDown ? 'KCVL' : 'CDG',
+      destName: isDown ? (lang === 'hi' ? 'कोचुवेली (केरळ)' : 'Kochuveli (Kerala)') : (lang === 'hi' ? 'चंदिगढ' : 'Chandigarh'),
+      routeSummary: isDown ? 'Chandigarh → Kochuveli' : 'Kochuveli → Chandigarh',
+      totalDistanceKm: 3140,
+    };
+  }
+
+  if (name.includes('MANGALA')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'NZM' : 'ERS',
+      sourceName: isDown ? (lang === 'hi' ? 'हजरत निजामुद्दीन' : 'Delhi Nizamuddin') : (lang === 'hi' ? 'एर्नाकुलम (कोची)' : 'Ernakulam (Kochi)'),
+      destCode: isDown ? 'ERS' : 'NZM',
+      destName: isDown ? (lang === 'hi' ? 'एर्नाकुलम (कोची)' : 'Ernakulam (Kochi)') : (lang === 'hi' ? 'हजरत निजामुद्दीन' : 'Delhi Nizamuddin'),
+      routeSummary: isDown ? 'Delhi → Ernakulam' : 'Ernakulam → Delhi',
+      totalDistanceKm: 2670,
+    };
+  }
+
+  if (name.includes('NETRAVA')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'LTT' : 'TVC',
+      sourceName: isDown ? (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT') : (lang === 'hi' ? 'तिरुवनंतपुरम' : 'Thiruvananthapuram'),
+      destCode: isDown ? 'TVC' : 'LTT',
+      destName: isDown ? (lang === 'hi' ? 'तिरुवनंतपुरम' : 'Thiruvananthapuram') : (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT'),
+      routeSummary: isDown ? 'Mumbai LTT → Trivandrum' : 'Trivandrum → Mumbai LTT',
+      totalDistanceKm: 1520,
+    };
+  }
+
+  if (name.includes('MATSYAG')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'LTT' : 'MAQ',
+      sourceName: isDown ? (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT') : (lang === 'hi' ? 'मंगळूरु सेंट्रल' : 'Mangaluru Central'),
+      destCode: isDown ? 'MAQ' : 'LTT',
+      destName: isDown ? (lang === 'hi' ? 'मंगळूरु सेंट्रल' : 'Mangaluru Central') : (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT'),
+      routeSummary: isDown ? 'Mumbai LTT → Mangaluru' : 'Mangaluru → Mumbai LTT',
+      totalDistanceKm: 895,
+    };
+  }
+
+  if (name.includes('KONKAN') && name.includes('KANYA')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'CSMT' : 'MAO',
+      sourceName: isDown ? (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT') : (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)'),
+      destCode: isDown ? 'MAO' : 'CSMT',
+      destName: isDown ? (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)') : (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT'),
+      routeSummary: isDown ? 'Mumbai CSMT → Madgaon' : 'Madgaon → Mumbai CSMT',
+      totalDistanceKm: 580,
+    };
+  }
+
+  if (name.includes('MANDOVI')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'CSMT' : 'MAO',
+      sourceName: isDown ? (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT') : (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)'),
+      destCode: isDown ? 'MAO' : 'CSMT',
+      destName: isDown ? (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)') : (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT'),
+      routeSummary: isDown ? 'Mumbai CSMT → Madgaon' : 'Madgaon → Mumbai CSMT',
+      totalDistanceKm: 580,
+    };
+  }
+
+  if (name.includes('TUTARI')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'DR' : 'SWV',
+      sourceName: isDown ? (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)') : (lang === 'hi' ? 'सावंतवाडी रोड' : 'Sawantwadi Road'),
+      destCode: isDown ? 'SWV' : 'DR',
+      destName: isDown ? (lang === 'hi' ? 'सावंतवाडी रोड' : 'Sawantwadi Road') : (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)'),
+      routeSummary: isDown ? 'Dadar → Sawantwadi' : 'Sawantwadi → Dadar',
+      totalDistanceKm: 490,
+    };
+  }
+
+  if (name.includes('RATNAGIRI') || name.includes('RN PASS')) {
+    const isDown = train.direction === 'down';
+    return {
+      sourceCode: isDown ? 'DR' : 'RN',
+      sourceName: isDown ? (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)') : (lang === 'hi' ? 'रत्नागिरी' : 'Ratnagiri'),
+      destCode: isDown ? 'RN' : 'DR',
+      destName: isDown ? (lang === 'hi' ? 'रत्नागिरी' : 'Ratnagiri') : (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)'),
+      routeSummary: isDown ? 'Dadar → Ratnagiri' : 'Ratnagiri → Dadar',
+      totalDistanceKm: 346,
+    };
+  }
+
+  // 3. Fallback based on Konkan Railway route
+  if (train.direction === 'down') {
+    return {
+      sourceCode: 'ROHA',
+      sourceName: lang === 'hi' ? 'रोहा' : 'Roha',
+      destCode: 'SRTK',
+      destName: lang === 'hi' ? 'सुरतकल' : 'Surathkal',
+      routeSummary: 'Roha → Surathkal (Southbound)',
+      totalDistanceKm: 738,
+    };
+  } else {
+    return {
+      sourceCode: 'SRTK',
+      sourceName: lang === 'hi' ? 'सुरतकल' : 'Surathkal',
+      destCode: 'ROHA',
+      destName: lang === 'hi' ? 'रोहा' : 'Roha',
+      routeSummary: 'Surathkal → Roha (Northbound)',
+      totalDistanceKm: 738,
+    };
+  }
+}
+
+/**
+ * Calculates exact distance covered between train source and destination,
+ * remaining distance, and progress percentage.
+ */
+export function getRouteProgress(train: TrainPosition, lang: 'en' | 'hi' = 'en'): RouteProgress {
+  const endpoints = getTrainEndpoints(train, lang);
+  const src = STATION_NAMES[endpoints.sourceCode];
+  const dest = STATION_NAMES[endpoints.destCode];
+
+  const krSectorKm = Math.round(train.progressKm);
+  const currentStationName = train.lastStationName || 'Konkan Railway';
+
+  // Calculate total route distance
+  let totalRouteKm = endpoints.totalDistanceKm || 738;
+  if (src && dest) {
+    const dist = Math.abs(dest.kmOffset - src.kmOffset);
+    if (dist > 50) totalRouteKm = dist;
+  }
+
+  // Calculate distance covered based on current train position
+  let coveredKm = 0;
+  if (src && dest) {
+    if (src.kmOffset <= dest.kmOffset) {
+      // Southbound: train moving from smaller offset (North) to larger offset (South)
+      coveredKm = krSectorKm - src.kmOffset;
+    } else {
+      // Northbound: train moving from larger offset (South) to smaller offset (North)
+      coveredKm = src.kmOffset - krSectorKm;
+    }
+  } else {
+    coveredKm = train.direction === 'down' ? krSectorKm : Math.max(0, 738 - krSectorKm);
+  }
+
+  coveredKm = Math.max(0, Math.min(totalRouteKm, Math.round(coveredKm)));
+  const remainingKm = Math.max(0, totalRouteKm - coveredKm);
+  const progressPercent = totalRouteKm > 0 ? Math.min(100, Math.max(0, Math.round((coveredKm / totalRouteKm) * 100))) : 0;
+
+  return {
+    sourceCode: endpoints.sourceCode,
+    sourceName: endpoints.sourceName,
+    destCode: endpoints.destCode,
+    destName: endpoints.destName,
+    currentStationName,
+    totalRouteKm,
+    coveredKm,
+    remainingKm,
+    progressPercent,
+    routeSummary: endpoints.routeSummary,
+    direction: train.direction,
+    krSectorKm,
+  };
+}
+
+/**
+ * Returns human-readable direction label with high-visibility origin-to-destination context.
+ */
+export function getDirectionDetails(direction: 'up' | 'down', lang: 'en' | 'hi' = 'en') {
+  if (direction === 'down') {
+    return {
+      arrow: '▼',
+      tag: 'Southbound',
+      subText: lang === 'hi' ? 'दक्षिणगामी (मुंबई/रोहा → गोवा/मंगळूरु)' : 'Southbound (Towards Goa / Mangaluru)',
+      shortText: 'Southbound',
+      color: '#38bdf8', // Bright sky-blue
+      badgeBg: 'rgba(56, 189, 248, 0.15)',
+      badgeBorder: 'rgba(56, 189, 248, 0.35)',
+    };
+  }
+  return {
+    arrow: '▲',
+    tag: 'Northbound',
+    subText: lang === 'hi' ? 'उत्तरगामी (मंगळूरु/गोवा → मुंबई/रोहा)' : 'Northbound (Towards Mumbai / Roha)',
+    shortText: 'Northbound',
+    color: '#2dd4bf', // Bright teal / emerald
+    badgeBg: 'rgba(45, 212, 191, 0.15)',
+    badgeBorder: 'rgba(45, 212, 191, 0.35)',
+  };
+}
