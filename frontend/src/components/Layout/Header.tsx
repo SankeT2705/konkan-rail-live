@@ -32,25 +32,26 @@ export function Header() {
     }}>
       <div style={{
         maxWidth: '1400px', margin: '0 auto',
-        padding: '0 16px',
-        display: 'flex', alignItems: 'center', gap: '12px',
+        padding: '0 12px',
+        display: 'flex', alignItems: 'center', gap: '8px',
         height: '60px',
+        width: '100%',
       }}>
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '0 0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
           <div style={{
             width: '32px', height: '32px', borderRadius: '8px',
             background: 'linear-gradient(135deg, var(--accent-teal), var(--accent-blue))',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '16px', fontWeight: '800', color: '#fff',
-            boxShadow: 'var(--glow-teal)',
+            boxShadow: 'var(--glow-teal)', flexShrink: 0,
           }}>🚂</div>
-          <div style={{ lineHeight: 1.1 }}>
-            <div style={{ fontWeight: '800', fontSize: '1rem', color: 'var(--text-primary)' }}>
-              {t.appName}
+          <div style={{ lineHeight: 1.15 }}>
+            <div style={{ fontWeight: '800', fontSize: '0.95rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              <span className="hide-mobile">{t.appName}</span>
+              <span className="show-mobile-only">KR Live</span>
             </div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'none' }}
-              className="hide-mobile">
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }} className="hide-mobile">
               ROHA → SURATHKAL · 738 KM
             </div>
           </div>
@@ -58,9 +59,10 @@ export function Header() {
 
         {/* View toggle */}
         <div style={{
-          display: 'flex', gap: '4px', padding: '3px',
+          display: 'flex', gap: '2px', padding: '2px',
           background: 'var(--bg-elevated)', borderRadius: '10px',
-          border: '1px solid var(--border-subtle)', marginLeft: '8px',
+          border: '1px solid var(--border-subtle)',
+          flexShrink: 0,
         }}>
           {(['schematic', 'map'] as ViewMode[]).map(m => (
             <button
@@ -69,7 +71,7 @@ export function Header() {
               className="btn"
               onClick={() => setViewMode(m)}
               style={{
-                padding: '5px 14px', fontSize: '0.8rem',
+                padding: '4px 10px', fontSize: '0.75rem',
                 borderRadius: '7px',
                 background: viewMode === m
                   ? 'linear-gradient(135deg, var(--accent-blue), var(--accent-teal))'
@@ -77,6 +79,7 @@ export function Header() {
                 color: viewMode === m ? '#fff' : 'var(--text-secondary)',
                 fontWeight: viewMode === m ? '700' : '500',
                 transition: 'all 200ms',
+                whiteSpace: 'nowrap',
               }}
             >
               {m === 'schematic' ? t.schematic : t.map}
@@ -85,15 +88,16 @@ export function Header() {
         </div>
 
         {/* Spacer */}
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, minWidth: '4px' }} />
 
         {/* WS indicator + last updated */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}
           className="hide-mobile">
           <div style={{
             width: '8px', height: '8px', borderRadius: '50%',
             background: wsConnected ? '#22c55e' : '#ef4444',
             boxShadow: wsConnected ? '0 0 6px #22c55e' : '0 0 6px #ef4444',
+            flexShrink: 0,
           }} />
           {wsConnected ? 'Live' : 'Reconnecting...'}
           {timeSince !== null && (
@@ -106,18 +110,18 @@ export function Header() {
           id="lang-toggle"
           className="btn btn-ghost"
           onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
-          style={{ padding: '6px 12px', fontSize: '0.8rem', minWidth: '52px' }}
+          style={{ padding: '4px 8px', fontSize: '0.75rem', minWidth: '38px', flexShrink: 0 }}
         >
           {language === 'en' ? 'हिं' : 'EN'}
         </button>
 
         {/* Theme selector */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             id="theme-toggle"
             className="btn btn-ghost"
             onClick={() => setShowThemeMenu(!showThemeMenu)}
-            style={{ padding: '6px 10px', fontSize: '1rem' }}
+            style={{ padding: '4px 8px', fontSize: '0.9rem' }}
           >
             {theme === 'dark' ? '🌙' : theme === 'light' ? '☀️' : '⚡'}
           </button>

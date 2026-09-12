@@ -1,27 +1,27 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useState, useLayoutEffect } from 'react';
 import { useTrainStore } from '../../store/useTrainStore';
 import { TrainMarker } from './TrainMarker';
 import { STATIONS } from '../../data/stations';
 import type { TrainPosition } from '../../types';
 
 const ROUTE_TOTAL_KM = 738;
-const TRACK_WIDTH = 4800;       // px — generous width for 70 stations
-const TRACK_TOP = 200;          // px from container top to track center
-const CONTAINER_HEIGHT = 470;   // px — generous height for 4 tiers of trains + station labels
+const BASE_TRACK_WIDTH = 4800;    // Base px width for 70 stations at 1.0x zoom
+const TRACK_TOP = 210;            // px from container top to track center
+const CONTAINER_HEIGHT = 590;     // px for 4 tiers of trains + 4 tiers of all 70 stations
 
-// Major stations for quick jumping
-const MAJOR_JUNCTIONS = [
+// Popular major junctions for quick jump pills
+const POPULAR_JUNCTIONS = [
   { code: 'ROHA', name: 'Roha', km: 0 },
   { code: 'KHED', name: 'Khed', km: 112 },
   { code: 'CHI',  name: 'Chiplun', km: 135 },
   { code: 'RN',   name: 'Ratnagiri', km: 211 },
   { code: 'KKNV', name: 'Kankavli', km: 308 },
   { code: 'KUDL', name: 'Kudal', km: 330 },
-  { code: 'SAWI', name: 'Sawantwadi Rd', km: 354 },
-  { code: 'THVM', name: 'Thivim (Goa)', km: 395 },
-  { code: 'MAO',  name: 'Madgaon (Goa)', km: 436 },
+  { code: 'SAWI', name: 'Sawantwadi', km: 354 },
+  { code: 'THVM', name: 'Thivim', km: 395 },
+  { code: 'MAO',  name: 'Madgaon', km: 436 },
   { code: 'KAWR', name: 'Karwar', km: 493 },
-  { code: 'KT',   name: 'Kumta', km: 550 },
+  { code: 'KUMTA',name: 'Kumta', km: 550 },
   { code: 'BTKL', name: 'Bhatkal', km: 614 },
   { code: 'UD',   name: 'Udupi', km: 686 },
   { code: 'SRTK', name: 'Surathkal', km: 738 },
@@ -35,11 +35,11 @@ interface PositionedTrain {
 }
 
 /**
- * Intelligent multi-tier lane assignment to completely eliminate train marker collisions.
- * Checks ALL existing trains placed on each tier with a 115px safety separation.
+ * Multi-tier collision-free lane assignment for running trains.
+ * Uses 115px safety separation along the track.
  */
 function computeTrainLayout(trains: TrainPosition[], kmToX: (km: number) => number): PositionedTrain[] {
-  const MIN_SEPARATION = 115; // px safety margin between train marker centers
+  const MIN_SEPARATION = 115;
 
   const downList = trains
     .filter(t => t.direction === 'down')
@@ -95,12 +95,39 @@ export function TrackView() {
   const trains = filteredTrains();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Mouse & Touch horizontal drag scrolling
+  // Zoom state: 0.65x to 2.2x (default 1.0x)
+  const [zoomLevel, setZoomLevel] = useState<number>(1.0);
+  const prevZoomRef = useRef<number>(zoomLevel);
+
+  // Station filter: show all 70 stations (default) or major only
+  const [stationFilter, setStationFilter] = useState<'all' | 'major'>('all');
+
+  // Dynamic track width based on zoom
+  const currentTrackWidth = Math.round(BASE_TRACK_WIDTH * zoomLevel);
+
+  function kmToX(km: number): number {
+    return Math.round((km / ROUTE_TOTAL_KM) * (currentTrackWidth - 220)) + 90;
+  }
+
+  // Preserve center scroll position across zoom changes
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const prevWidth = Math.round(BASE_TRACK_WIDTH * prevZoomRef.current);
+    const centerRatio = (container.scrollLeft + container.clientWidth / 2) / prevWidth;
+    const newScrollLeft = centerRatio * currentTrackWidth - container.clientWidth / 2;
+    container.scrollLeft = Math.max(0, newScrollLeft);
+    prevZoomRef.current = zoomLevel;
+  }, [zoomLevel, currentTrackWidth]);
+
+  // Desktop mouse horizontal drag scrolling
   const isDragging = useRef(false);
   const dragStart = useRef(0);
   const scrollStart = useRef(0);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only trigger drag on primary mouse button
+    if (e.button !== 0) return;
     isDragging.current = true;
     dragStart.current = e.pageX;
     scrollStart.current = containerRef.current?.scrollLeft ?? 0;
@@ -116,25 +143,38 @@ export function TrackView() {
     isDragging.current = false;
   }, []);
 
+  // Smooth two-finger pinch-to-zoom on mobile
+  const pinchStartDist = useRef<number | null>(null);
+  const pinchStartZoom = useRef<number>(1.0);
+
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    isDragging.current = true;
-    dragStart.current = e.touches[0].pageX;
-    scrollStart.current = containerRef.current?.scrollLeft ?? 0;
-  }, []);
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].pageX - e.touches[1].pageX,
+        e.touches[0].pageY - e.touches[1].pageY
+      );
+      pinchStartDist.current = dist;
+      pinchStartZoom.current = zoomLevel;
+    }
+  }, [zoomLevel]);
 
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging.current || !containerRef.current) return;
-    const dx = e.touches[0].pageX - dragStart.current;
-    containerRef.current.scrollLeft = scrollStart.current - dx;
+    if (e.touches.length === 2 && pinchStartDist.current !== null) {
+      const dist = Math.hypot(
+        e.touches[0].pageX - e.touches[1].pageX,
+        e.touches[0].pageY - e.touches[1].pageY
+      );
+      const scale = dist / pinchStartDist.current;
+      const target = Math.min(2.2, Math.max(0.65, +(pinchStartZoom.current * scale).toFixed(2)));
+      setZoomLevel(target);
+    }
   }, []);
 
-  const onTouchEnd = useCallback(() => {
-    isDragging.current = false;
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      pinchStartDist.current = null;
+    }
   }, []);
-
-  function kmToX(km: number): number {
-    return Math.round((km / ROUTE_TOTAL_KM) * (TRACK_WIDTH - 220)) + 90;
-  }
 
   function jumpToStation(km: number) {
     if (!containerRef.current) return;
@@ -146,39 +186,76 @@ export function TrackView() {
     });
   }
 
+  const zoomIn = () => setZoomLevel(z => Math.min(2.2, +(z + 0.2).toFixed(2)));
+  const zoomOut = () => setZoomLevel(z => Math.max(0.65, +(z - 0.2).toFixed(2)));
+  const resetZoom = () => setZoomLevel(1.0);
+
   const positionedTrains = computeTrainLayout(trains, kmToX);
 
   return (
-    <div style={{ position: 'relative', margin: '0 16px' }}>
+    <div style={{ position: 'relative', margin: '0 8px' }}>
 
-      {/* Quick Station Jump Bar */}
+      {/* Quick Station Jump & Search Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         overflowX: 'auto',
-        padding: '10px 0',
+        padding: '8px 4px',
         WebkitOverflowScrolling: 'touch',
         scrollbarWidth: 'none',
       }}>
         <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          ⚡ Jump to:
+          ⚡ Jump:
         </span>
-        {MAJOR_JUNCTIONS.map(j => (
+
+        {/* All 70 Stations Dropdown */}
+        <select
+          aria-label="Jump to any station"
+          onChange={e => {
+            if (e.target.value !== '') {
+              jumpToStation(Number(e.target.value));
+            }
+          }}
+          defaultValue=""
+          style={{
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '20px',
+            padding: '4px 10px',
+            fontSize: '0.72rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            outline: 'none',
+            flexShrink: 0,
+          }}
+        >
+          <option value="" disabled>🔍 All 70 Stations...</option>
+          {STATIONS.map(s => (
+            <option key={s.code} value={s.km}>
+              {s.km} km · {s.code} - {language === 'hi' ? s.nameHi : s.name} {s.type === 'major' ? '⭐' : ''}
+            </option>
+          ))}
+        </select>
+
+        {/* Popular Junction Quick Pills */}
+        {POPULAR_JUNCTIONS.map(j => (
           <button
             key={j.code}
             onClick={() => jumpToStation(j.km)}
             className="btn btn-ghost"
             style={{
-              padding: '3px 10px',
+              padding: '3px 9px',
               fontSize: '0.72rem',
               borderRadius: '20px',
               whiteSpace: 'nowrap',
               border: '1px solid var(--border-subtle)',
               background: 'var(--bg-elevated)',
+              flexShrink: 0,
             }}
           >
-            {j.name} ({j.km}k)
+            {j.name} <span style={{ opacity: 0.6, fontSize: '0.65rem' }}>({j.km}k)</span>
           </button>
         ))}
       </div>
@@ -188,45 +265,165 @@ export function TrackView() {
         className="glass"
         style={{
           borderRadius: '16px',
-          padding: '14px 0 10px',
+          padding: '10px 0 6px',
           border: '1px solid var(--border-subtle)',
           position: 'relative',
         }}
       >
-        {/* Track Legend & Direction Guide */}
+        {/* Track Control Toolbar (Directions + Station Filter + Zoom Controls) */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '0 16px 12px',
+          padding: '0 14px 10px',
           borderBottom: '1px solid var(--border-subtle)',
           fontSize: '0.75rem',
           color: 'var(--text-muted)',
           flexWrap: 'wrap',
           gap: '8px',
         }}>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+          {/* Direction legend */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{
                 color: '#38bdf8', fontWeight: '900', background: 'rgba(56,189,248,0.15)',
-                padding: '2px 7px', borderRadius: '6px', border: '1px solid rgba(56,189,248,0.3)'
+                padding: '2px 7px', borderRadius: '6px', border: '1px solid rgba(56,189,248,0.3)',
+                fontSize: '0.7rem'
               }}>▼ Southbound</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>(Above Track · Roha → Goa / Mangaluru)</span>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }} className="hide-mobile">
+                (Above · Roha → Goa / Mangaluru)
+              </span>
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{
                 color: '#2dd4bf', fontWeight: '900', background: 'rgba(45,212,191,0.15)',
-                padding: '2px 7px', borderRadius: '6px', border: '1px solid rgba(45,212,191,0.3)'
+                padding: '2px 7px', borderRadius: '6px', border: '1px solid rgba(45,212,191,0.3)',
+                fontSize: '0.7rem'
               }}>▲ Northbound</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>(Below Track · Mangaluru → Mumbai / Roha)</span>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }} className="hide-mobile">
+                (Below · Mangaluru → Roha)
+              </span>
             </span>
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            👈 Drag / Swipe to pan 738 km route · Click any train for details 👉
+
+          {/* Station Filter Toggle & Interactive Zoom Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+
+            {/* Station density view toggle */}
+            <div style={{
+              display: 'inline-flex',
+              background: 'var(--bg-elevated)',
+              borderRadius: '16px',
+              padding: '2px',
+              border: '1px solid var(--border-subtle)',
+            }}>
+              <button
+                onClick={() => setStationFilter('all')}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontSize: '0.68rem',
+                  fontWeight: stationFilter === 'all' ? '800' : '500',
+                  background: stationFilter === 'all' ? 'var(--accent-teal)' : 'transparent',
+                  color: stationFilter === 'all' ? '#080d1a' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 150ms',
+                }}
+              >
+                🏢 All 70 Stations
+              </button>
+              <button
+                onClick={() => setStationFilter('major')}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontSize: '0.68rem',
+                  fontWeight: stationFilter === 'major' ? '800' : '500',
+                  background: stationFilter === 'major' ? 'var(--accent-teal)' : 'transparent',
+                  color: stationFilter === 'major' ? '#080d1a' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 150ms',
+                }}
+              >
+                ⭐ Major Only
+              </button>
+            </div>
+
+            {/* In-App Zoom Controls */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'var(--bg-elevated)',
+              borderRadius: '16px',
+              padding: '2px 4px',
+              border: '1px solid var(--border-subtle)',
+              gap: '2px',
+            }}>
+              <button
+                onClick={zoomOut}
+                disabled={zoomLevel <= 0.65}
+                title="Zoom out"
+                style={{
+                  background: 'none', border: 'none',
+                  color: zoomLevel <= 0.65 ? 'var(--text-muted)' : 'var(--text-primary)',
+                  fontSize: '0.85rem', fontWeight: '800', padding: '2px 7px',
+                  cursor: zoomLevel <= 0.65 ? 'not-allowed' : 'pointer',
+                  borderRadius: '8px',
+                }}
+              >
+                −
+              </button>
+              <span
+                onClick={resetZoom}
+                title="Click to reset zoom to 100%"
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: '700',
+                  fontFamily: 'var(--font-mono)',
+                  color: zoomLevel === 1.0 ? 'var(--accent-teal)' : 'var(--text-secondary)',
+                  padding: '0 4px',
+                  cursor: 'pointer',
+                  minWidth: '38px',
+                  textAlign: 'center',
+                }}
+              >
+                {Math.round(zoomLevel * 100)}%
+              </span>
+              <button
+                onClick={zoomIn}
+                disabled={zoomLevel >= 2.2}
+                title="Zoom in"
+                style={{
+                  background: 'none', border: 'none',
+                  color: zoomLevel >= 2.2 ? 'var(--text-muted)' : 'var(--text-primary)',
+                  fontSize: '0.85rem', fontWeight: '800', padding: '2px 7px',
+                  cursor: zoomLevel >= 2.2 ? 'not-allowed' : 'pointer',
+                  borderRadius: '8px',
+                }}
+              >
+                +
+              </button>
+              {zoomLevel !== 1.0 && (
+                <button
+                  onClick={resetZoom}
+                  title="Reset zoom"
+                  style={{
+                    background: 'none', border: 'none',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.65rem', padding: '2px 4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ↺
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Scrollable Track Canvas with Touch & Mouse support */}
+        {/* Scrollable Track Canvas with Native Smooth Touch & Desktop Mouse Drag */}
         <div
           ref={containerRef}
           className="track-container"
@@ -234,7 +431,6 @@ export function TrackView() {
             height: `${CONTAINER_HEIGHT}px`,
             position: 'relative',
             cursor: 'grab',
-            WebkitOverflowScrolling: 'touch',
           }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
@@ -244,7 +440,7 @@ export function TrackView() {
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          <div style={{ width: `${TRACK_WIDTH}px`, height: '100%', position: 'relative' }}>
+          <div style={{ width: `${currentTrackWidth}px`, height: '100%', position: 'relative' }}>
 
             {/* State Zone Backgrounds */}
             <div style={{
@@ -288,71 +484,148 @@ export function TrackView() {
               zIndex: 4,
             }} />
 
-            {/* Station Ticks & Dedicated Non-Colliding Station Strip */}
-            {STATIONS.map((st, idx) => {
+            {/* ALL 70 STATIONS: Ticks, Nodes, Guides & Staggered Non-Colliding Ribbons */}
+            {STATIONS.map((st) => {
               const x = kmToX(st.km);
               const isMajor = st.type === 'major';
-              const isEvenMajor = isMajor && (idx % 2 === 0);
+              const showStationBadge = isMajor || stationFilter === 'all';
+              // 3-tier staggering for minor stations (zero collision across 70 stations)
+              const minorTier = st.index % 3;
 
               return (
                 <div key={st.code} style={{ position: 'absolute', left: `${x}px` }}>
+
                   {/* Station Tick on the Track Line */}
                   <div style={{
                     position: 'absolute',
                     top: `${TRACK_TOP - (isMajor ? 14 : 7)}px`,
-                    left: '-1px',
-                    width: isMajor ? '2.5px' : '1.5px',
+                    left: isMajor ? '-1.5px' : '-1px',
+                    width: isMajor ? '3px' : '2px',
                     height: isMajor ? 28 : 14,
-                    background: isMajor ? 'var(--accent-teal)' : 'rgba(255,255,255,0.25)',
-                    borderRadius: '1px',
+                    background: isMajor ? 'var(--accent-teal)' : 'rgba(255,255,255,0.28)',
+                    borderRadius: '2px',
                     zIndex: 5,
-                    boxShadow: isMajor ? '0 0 6px var(--accent-teal)' : 'none',
+                    boxShadow: isMajor ? '0 0 8px var(--accent-teal)' : 'none',
                   }} />
 
-                  {/* Vertical Guide Line down to Station Label Zone */}
-                  {isMajor && (
+                  {/* Track Center Node Dot */}
+                  <div style={{
+                    position: 'absolute',
+                    top: `${TRACK_TOP - (isMajor ? 4 : 2)}px`,
+                    left: `${isMajor ? -4 : -2}px`,
+                    width: `${isMajor ? 8 : 4}px`,
+                    height: `${isMajor ? 8 : 4}px`,
+                    borderRadius: '50%',
+                    background: isMajor ? '#2dd4bf' : 'rgba(255,255,255,0.5)',
+                    boxShadow: isMajor ? '0 0 10px #2dd4bf' : 'none',
+                    zIndex: 6,
+                  }} />
+
+                  {/* Vertical Guide Line down to Station Label */}
+                  {showStationBadge && (
                     <div style={{
                       position: 'absolute',
-                      top: `${TRACK_TOP + 14}px`,
+                      top: `${TRACK_TOP + (isMajor ? 14 : 7)}px`,
                       left: '0px',
                       width: '1px',
-                      height: `${(isEvenMajor ? 160 : 190)}px`,
-                      borderLeft: '1px dashed rgba(255,255,255,0.12)',
+                      height: `${isMajor ? 156 : (225 + minorTier * 32)}px`,
+                      borderLeft: `1px dashed ${isMajor ? 'rgba(45,212,191,0.25)' : 'rgba(255,255,255,0.1)'}`,
                       pointerEvents: 'none',
                       zIndex: 2,
                     }} />
                   )}
 
-                  {/* Station Labels in Dedicated Bottom Strip (Zero collision with any train tier) */}
+                  {/* 1. Major Junction Station Card (Prominent Primary Tier) */}
                   {isMajor && (
-                    <div style={{
-                      position: 'absolute',
-                      top: `${TRACK_TOP + (isEvenMajor ? 172 : 202)}px`,
-                      left: '-48px',
-                      width: '96px',
-                      textAlign: 'center',
-                      fontSize: '0.68rem',
-                      fontWeight: '800',
-                      lineHeight: 1.25,
-                      userSelect: 'none',
-                      zIndex: 10,
-                      background: 'rgba(15,23,42,0.85)',
-                      padding: '4px 6px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                    }}
-                    onClick={() => jumpToStation(st.km)}
-                    title={`Click to center on ${st.name} (${st.km} km)`}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `${TRACK_TOP + 172}px`,
+                        left: '-52px',
+                        width: '104px',
+                        textAlign: 'center',
+                        fontSize: '0.68rem',
+                        fontWeight: '800',
+                        lineHeight: 1.25,
+                        userSelect: 'none',
+                        zIndex: 10,
+                        background: 'linear-gradient(180deg, rgba(15,23,42,0.95), rgba(8,13,26,0.95))',
+                        padding: '5px 6px',
+                        borderRadius: '10px',
+                        border: '1.5px solid rgba(45,212,191,0.45)',
+                        boxShadow: '0 6px 16px rgba(0,0,0,0.6), 0 0 10px rgba(45,212,191,0.15)',
+                        cursor: 'pointer',
+                        transition: 'transform 150ms, border-color 150ms',
+                      }}
+                      onClick={() => jumpToStation(st.km)}
+                      title={`Click to center on ${st.name} (${st.km} km)`}
                     >
-                      <div style={{ color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {language === 'hi' ? st.nameHi : st.name}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', marginBottom: '2px' }}>
+                        <span style={{ color: 'var(--accent-teal)', fontSize: '0.6rem', fontWeight: '900' }}>⭐</span>
+                        <span style={{ color: 'var(--accent-teal)', fontSize: '0.62rem', fontWeight: '900', fontFamily: 'var(--font-mono)' }}>
+                          {st.code}
+                        </span>
+                        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.58rem' }}>
+                          · {st.km}k
+                        </span>
                       </div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--accent-teal)', marginTop: '2px', fontWeight: '800' }}>
-                        {st.km} km
+                      <div style={{
+                        color: '#ffffff',
+                        fontWeight: '700',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontSize: '0.68rem',
+                      }}>
+                        {language === 'hi' ? st.nameHi : st.name}
                       </div>
                     </div>
                   )}
+
+                  {/* 2. Minor Small Station Badge (Staggered 3-Tier Ribbon — Zero Collision!) */}
+                  {!isMajor && stationFilter === 'all' && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `${TRACK_TOP + 234 + minorTier * 32}px`,
+                        left: '-44px',
+                        width: '88px',
+                        textAlign: 'center',
+                        fontSize: '0.62rem',
+                        userSelect: 'none',
+                        zIndex: 9,
+                        background: 'rgba(15,23,42,0.88)',
+                        padding: '3px 5px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        boxShadow: '0 3px 10px rgba(0,0,0,0.4)',
+                        cursor: 'pointer',
+                        transition: 'transform 120ms, border-color 120ms',
+                      }}
+                      onClick={() => jumpToStation(st.km)}
+                      title={`${st.name} (${st.code}) • ${st.km} km • Click to center`}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1px' }}>
+                        <span style={{ color: '#93c5fd', fontSize: '0.58rem', fontWeight: '800', fontFamily: 'var(--font-mono)' }}>
+                          {st.code}
+                        </span>
+                        <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: '0.55rem' }}>
+                          {st.km}k
+                        </span>
+                      </div>
+                      <div style={{
+                        color: 'rgba(240,246,255,0.9)',
+                        fontWeight: '600',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontSize: '0.62rem',
+                      }}>
+                        {language === 'hi' ? st.nameHi : st.name}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               );
             })}

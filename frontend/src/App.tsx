@@ -39,13 +39,13 @@ function HomePage() {
     <div>
       {/* Stats bar */}
       <div style={{
-        display: 'flex', gap: '24px', flexWrap: 'wrap',
-        padding: '12px 16px',
+        display: 'flex', gap: '8px 18px', flexWrap: 'wrap',
+        padding: '10px 14px',
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border-subtle)',
-        fontSize: '0.8rem', color: 'var(--text-muted)',
+        fontSize: '0.78rem', color: 'var(--text-muted)',
       }}>
-        <span>🚂 <strong style={{ color: 'var(--text-primary)' }}>{trains.length}</strong> trains on route</span>
+        <span>🚂 <strong style={{ color: 'var(--text-primary)' }}>{trains.length}</strong> trains</span>
         <span>🟢 <strong style={{ color: '#22c55e' }}>{trains.filter(t => t.delayMinutes <= 0).length}</strong> on time</span>
         <span>🔴 <strong style={{ color: '#ef4444' }}>{trains.filter(t => t.delayMinutes > 5).length}</strong> delayed</span>
         <span>▲ <strong>{trains.filter(t => t.direction === 'up').length}</strong> northbound</span>
