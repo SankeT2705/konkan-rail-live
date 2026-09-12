@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { TrainPosition } from '../../types';
 import { useTrainStore } from '../../store/useTrainStore';
-import { getRouteProgress, getDirectionDetails } from '../../lib/trainUtils';
+import { getRouteProgress, getDirectionDetails, formatDelay } from '../../lib/trainUtils';
 
 const CATEGORY_COLORS: Record<string, string> = {
   passenger: '#3b82f6',
@@ -205,8 +205,8 @@ export function TrainMarker({ train, x, trackTop, tier, yOffset }: TrainMarkerPr
                 {train.delayMinutes === 0
                   ? '✅ On time'
                   : train.delayMinutes > 0
-                  ? `🔴 +${train.delayMinutes} min late`
-                  : `🟢 ${Math.abs(train.delayMinutes)} min early`
+                  ? `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`
+                  : `🟢 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`
                 }
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '3px' }}>

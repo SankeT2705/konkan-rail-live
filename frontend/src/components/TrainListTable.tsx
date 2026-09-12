@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTrainStore } from '../store/useTrainStore';
 import { useT } from '../i18n';
-import { getRouteProgress, getDirectionDetails } from '../lib/trainUtils';
+import { getRouteProgress, getDirectionDetails, formatDelay } from '../lib/trainUtils';
 import { TrainJourneyTimeline } from './TrainDetail/TrainJourneyTimeline';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -93,7 +93,7 @@ export function TrainListTable() {
                     fontWeight: '800', fontSize: '0.8rem', color: delayColor,
                     background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '8px'
                   }}>
-                    {train.delayMinutes === 0 ? 'On time' : train.delayMinutes > 0 ? `+${train.delayMinutes}m` : `${train.delayMinutes}m`}
+                    {formatDelay(train.delayMinutes, { lang: language })}
                   </div>
                 </div>
 
@@ -289,9 +289,7 @@ export function TrainListTable() {
                 </div>
                 <div style={{ fontWeight: '800', fontSize: '0.85rem', color: delayColor, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>
-                    {train.delayMinutes === 0 ? 'On time'
-                      : train.delayMinutes > 0 ? `+${train.delayMinutes}m`
-                      : `${train.delayMinutes}m`}
+                    {formatDelay(train.delayMinutes, { lang: language })}
                   </span>
                   <span style={{ fontSize: '0.7rem', color: 'var(--accent-teal)', opacity: 0.8 }}>
                     {isExpanded ? '▲' : '▼'}

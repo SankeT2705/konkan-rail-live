@@ -5,7 +5,8 @@ import { useTrainStore } from '../../store/useTrainStore';
 import { useT } from '../../i18n';
 import { LineChart, Line, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TrainPosition } from '../../types';
-import { getRouteProgress, getDirectionDetails } from '../../lib/trainUtils';
+import { getRouteProgress, getDirectionDetails, formatDelay } from '../../lib/trainUtils';
+import { TrainJourneyTimeline } from './TrainJourneyTimeline';
 import { API_URL } from '../../lib/api';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -378,12 +379,15 @@ export function TrainDetail() {
                       color: train.delayMinutes > 5 ? '#ef4444' : train.delayMinutes < 0 ? '#22c55e' : '#38bdf8',
                     }}>
                       {train.delayMinutes === 0 ? '✅ On Time'
-                        : train.delayMinutes > 0 ? `🔴 +${train.delayMinutes}m Late`
-                        : `🟢 ${Math.abs(train.delayMinutes)}m Early`}
+                        : train.delayMinutes > 0 ? `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`
+                        : `🟢 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`}
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Graphical Where Is My Train Journey */}
+              <TrainJourneyTimeline train={train} language={language} />
 
               {/* Delay Trend Sparkline */}
               {activeHistory && activeHistory.length >= 2 && (

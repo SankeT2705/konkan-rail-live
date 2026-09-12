@@ -322,3 +322,88 @@ export function getDirectionDetails(direction: 'up' | 'down', lang: 'en' | 'hi' 
     badgeBorder: 'rgba(45, 212, 191, 0.35)',
   };
 }
+
+/**
+ * Formats delay minutes into hours and minutes.
+ * e.g., 228 -> "+3h 48m" or "+3h 48m late"
+ * e.g., 45 -> "+45m" or "+45m late"
+ * e.g., 0 -> "On time"
+ * e.g., -15 -> "-15m" or "15m early"
+ */
+export function formatDelay(
+  delayMinutes: number,
+  options?: { showUnit?: 'short' | 'long'; lang?: 'en' | 'hi' }
+): string {
+  const lang = options?.lang || 'en';
+  if (delayMinutes === 0) {
+    return lang === 'hi' ? 'समय पर' : 'On time';
+  }
+
+  const abs = Math.abs(delayMinutes);
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+
+  let timeStr = '';
+  if (hours > 0 && mins > 0) {
+    timeStr = `${hours}h ${mins}m`;
+  } else if (hours > 0) {
+    timeStr = `${hours}h`;
+  } else {
+    timeStr = `${mins}m`;
+  }
+
+  if (delayMinutes > 0) {
+    if (options?.showUnit === 'long') {
+      return lang === 'hi' ? `+${timeStr} विलंब` : `+${timeStr} late`;
+    }
+    return `+${timeStr}`;
+  } else {
+    if (options?.showUnit === 'long') {
+      return lang === 'hi' ? `${timeStr} पहले` : `${timeStr} early`;
+    }
+    return `-${timeStr}`;
+  }
+}
+
+/**
+ * Calculates realistic expected arrival time (HH:mm) at an upcoming station
+ * based on current station time, distance remaining, and train category speed profile.
+ */
+export function calculateExpectedTime(
+  baseTimeStr: string | undefined,
+  distanceKm: number,
+  category?: string
+): string {
+  let baseHours = 0;
+  let baseMinutes = 0;
+
+  if (baseTimeStr && baseTimeStr.includes(':')) {
+    const parts = baseTimeStr.split(':').map(p => parseInt(p, 10));
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      baseHours = parts[0];
+      baseMinutes = parts[1];
+    }
+  } else {
+    const now = new Date();
+    baseHours = now.getHours();
+    baseMinutes = now.getMinutes();
+  }
+
+  // Average commercial speed along Konkan Railway (single track cuttings & halts)
+  const speed = category === 'premium' ? 75
+    : category === 'superfast' ? 65
+    : category === 'express' ? 55
+    : category === 'passenger' ? 45
+    : 50;
+
+  // Transit time in minutes (minimum 2 mins)
+  const transitMinutes = Math.max(2, Math.round(distanceKm / (speed / 60)));
+
+  const totalMinutes = baseHours * 60 + baseMinutes + transitMinutes;
+  const expHours = Math.floor(totalMinutes / 60) % 24;
+  const expMins = totalMinutes % 60;
+
+  const hh = String(expHours).padStart(2, '0');
+  const mm = String(expMins).padStart(2, '0');
+  return `${hh}:${mm}`;
+}

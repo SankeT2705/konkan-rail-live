@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { STATIONS } from '../../data/stations';
 import type { TrainPosition } from '../../types';
-import { getRouteProgress, getDirectionDetails } from '../../lib/trainUtils';
+import { getRouteProgress, getDirectionDetails, formatDelay, calculateExpectedTime } from '../../lib/trainUtils';
 
 interface TrainJourneyTimelineProps {
   train: TrainPosition;
@@ -97,7 +97,7 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
           color: train.delayMinutes > 5 ? '#ef4444' : '#22c55e',
           border: `1px solid ${train.delayMinutes > 5 ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
         }}>
-          {train.delayMinutes <= 0 ? '🟢 On Schedule' : `🔴 +${train.delayMinutes} min Delay`}
+          {train.delayMinutes <= 0 ? '🟢 On Schedule' : `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`}
         </div>
       </div>
 
@@ -241,8 +241,32 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
                   </div>
                 )}
                 {isUpcoming && (
-                  <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: '600' }}>
-                    <span>in {distanceDiff} km</span>
+                  <div>
+                    <div style={{
+                      fontSize: '0.74rem',
+                      color: '#38bdf8',
+                      fontWeight: '800',
+                      fontFamily: 'var(--font-mono)',
+                      letterSpacing: '0.02em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      justifyContent: 'flex-end',
+                    }}>
+                      <span>{calculateExpectedTime(train.actualTime || train.scheduledArrival, distanceDiff, train.category)}</span>
+                      <span style={{
+                        fontSize: '0.58rem',
+                        color: 'rgba(56,189,248,0.95)',
+                        background: 'rgba(56,189,248,0.18)',
+                        border: '1px solid rgba(56,189,248,0.3)',
+                        padding: '0.5px 3px',
+                        borderRadius: '3px',
+                        fontWeight: '700',
+                      }}>EXP</span>
+                    </div>
+                    <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '1px' }}>
+                      in {distanceDiff} km
+                    </div>
                   </div>
                 )}
               </div>

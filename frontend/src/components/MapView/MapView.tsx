@@ -3,7 +3,7 @@ import L from 'leaflet';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup } from 'react-leaflet';
 import { useTrainStore } from '../../store/useTrainStore';
 import { STATIONS } from '../../data/stations';
-import { getRouteProgress, getDirectionDetails } from '../../lib/trainUtils';
+import { getRouteProgress, getDirectionDetails, formatDelay } from '../../lib/trainUtils';
 
 // Fix default marker icon issue with webpack/vite
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -248,7 +248,7 @@ export function MapView() {
                         fontWeight: '800',
                         color: train.delayMinutes > 5 ? '#ef4444' : train.delayMinutes < 0 ? '#22c55e' : '#38bdf8',
                       }}>
-                        {train.delayMinutes === 0 ? '✅ On time' : train.delayMinutes > 0 ? `🔴 +${train.delayMinutes} min late` : `🟢 ${Math.abs(train.delayMinutes)} min early`}
+                        {train.delayMinutes === 0 ? '✅ On time' : train.delayMinutes > 0 ? `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}` : `🟢 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`}
                       </span>
                     </div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
