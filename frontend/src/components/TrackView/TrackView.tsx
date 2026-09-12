@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useLayoutEffect } from 'react';
+import { useRef, useCallback, useState, useEffect, useLayoutEffect } from 'react';
 import { useTrainStore } from '../../store/useTrainStore';
 import { TrainMarker } from './TrainMarker';
 import { STATIONS } from '../../data/stations';
@@ -6,8 +6,6 @@ import type { TrainPosition } from '../../types';
 
 const ROUTE_TOTAL_KM = 738;
 const BASE_TRACK_WIDTH = 4800;    // Base px width for 70 stations at 1.0x zoom
-const TRACK_TOP = 210;            // px from container top to track center
-const CONTAINER_HEIGHT = 590;     // px for 4 tiers of trains + 4 tiers of all 70 stations
 
 // Popular major junctions for quick jump pills
 const POPULAR_JUNCTIONS = [
@@ -36,22 +34,26 @@ interface PositionedTrain {
 
 /**
  * Multi-tier collision-free lane assignment for running trains.
- * Uses 115px safety separation along the track.
+ * Adapts tier separation based on device size.
  */
-function computeTrainLayout(trains: TrainPosition[], kmToX: (km: number) => number): PositionedTrain[] {
-  const MIN_SEPARATION = 115;
+function computeTrainLayout(trains: TrainPosition[], kmToX: (km: number) => number, isMobile: boolean): PositionedTrain[] {
+  const MIN_SEPARATION = isMobile ? 85 : 115;
+  const downBase = isMobile ? -30 : -38;
+  const downStep = isMobile ? 30 : 38;
+  const upBase = isMobile ? 22 : 26;
+  const upStep = isMobile ? 30 : 38;
 
   const downList = trains
     .filter(t => t.direction === 'down')
-    .map(t => ({ train: t, x: kmToX(t.progressKm), tier: 0, yOffset: -38 }))
+    .map(t => ({ train: t, x: kmToX(t.progressKm), tier: 0, yOffset: downBase }))
     .sort((a, b) => a.x - b.x);
 
   const upList = trains
     .filter(t => t.direction === 'up')
-    .map(t => ({ train: t, x: kmToX(t.progressKm), tier: 0, yOffset: 26 }))
+    .map(t => ({ train: t, x: kmToX(t.progressKm), tier: 0, yOffset: upBase }))
     .sort((a, b) => a.x - b.x);
 
-  // Multi-tier placement for Down trains (grow upwards from track: tier 0 = -38, tier 1 = -76, etc.)
+  // Multi-tier placement for Down trains
   const downTiers: number[][] = [[], [], [], []];
   for (const item of downList) {
     let assignedTier = 0;
@@ -64,12 +66,12 @@ function computeTrainLayout(trains: TrainPosition[], kmToX: (km: number) => numb
       assignedTier = tier + 1;
     }
     item.tier = assignedTier;
-    item.yOffset = -(38 + assignedTier * 38);
+    item.yOffset = -(Math.abs(downBase) + assignedTier * downStep);
     if (!downTiers[assignedTier]) downTiers[assignedTier] = [];
     downTiers[assignedTier].push(item.x);
   }
 
-  // Multi-tier placement for Up trains (grow downwards from track: tier 0 = +26, tier 1 = +64, etc.)
+  // Multi-tier placement for Up trains
   const upTiers: number[][] = [[], [], [], []];
   for (const item of upList) {
     let assignedTier = 0;
@@ -82,7 +84,7 @@ function computeTrainLayout(trains: TrainPosition[], kmToX: (km: number) => numb
       assignedTier = tier + 1;
     }
     item.tier = assignedTier;
-    item.yOffset = 26 + assignedTier * 38;
+    item.yOffset = upBase + assignedTier * upStep;
     if (!upTiers[assignedTier]) upTiers[assignedTier] = [];
     upTiers[assignedTier].push(item.x);
   }
@@ -94,6 +96,22 @@ export function TrackView() {
   const { filteredTrains, language } = useTrainStore();
   const trains = filteredTrains();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Responsive mobile detection
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= 640 : false
+  );
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth <= 640);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const trackTop = isMobile ? 165 : 210;
+  const containerHeight = isMobile ? 425 : 585;
 
   // Zoom state: 0.65x to 2.2x (default 1.0x)
   const [zoomLevel, setZoomLevel] = useState<number>(1.0);
@@ -190,7 +208,7 @@ export function TrackView() {
   const zoomOut = () => setZoomLevel(z => Math.max(0.65, +(z - 0.2).toFixed(2)));
   const resetZoom = () => setZoomLevel(1.0);
 
-  const positionedTrains = computeTrainLayout(trains, kmToX);
+  const positionedTrains = computeTrainLayout(trains, kmToX, isMobile);
 
   return (
     <div style={{ position: 'relative', margin: '0 8px' }}>
@@ -428,7 +446,7 @@ export function TrackView() {
           ref={containerRef}
           className="track-container"
           style={{
-            height: `${CONTAINER_HEIGHT}px`,
+            height: `${containerHeight}px`,
             position: 'relative',
             cursor: 'grab',
           }}
@@ -478,7 +496,7 @@ export function TrackView() {
             {/* Continuous Glowing Track Line */}
             <div className="track-line" style={{
               position: 'absolute',
-              top: `${TRACK_TOP - 2}px`,
+              top: `${trackTop - 2}px`,
               left: `${kmToX(0)}px`,
               width: `${kmToX(738) - kmToX(0)}px`,
               zIndex: 4,
@@ -498,7 +516,7 @@ export function TrackView() {
                   {/* Station Tick on the Track Line */}
                   <div style={{
                     position: 'absolute',
-                    top: `${TRACK_TOP - (isMajor ? 14 : 7)}px`,
+                    top: `${trackTop - (isMajor ? 14 : 7)}px`,
                     left: isMajor ? '-1.5px' : '-1px',
                     width: isMajor ? '3px' : '2px',
                     height: isMajor ? 28 : 14,
@@ -511,7 +529,7 @@ export function TrackView() {
                   {/* Track Center Node Dot */}
                   <div style={{
                     position: 'absolute',
-                    top: `${TRACK_TOP - (isMajor ? 4 : 2)}px`,
+                    top: `${trackTop - (isMajor ? 4 : 2)}px`,
                     left: `${isMajor ? -4 : -2}px`,
                     width: `${isMajor ? 8 : 4}px`,
                     height: `${isMajor ? 8 : 4}px`,
@@ -525,10 +543,10 @@ export function TrackView() {
                   {showStationBadge && (
                     <div style={{
                       position: 'absolute',
-                      top: `${TRACK_TOP + (isMajor ? 14 : 7)}px`,
+                      top: `${trackTop + (isMajor ? 14 : 7)}px`,
                       left: '0px',
                       width: '1px',
-                      height: `${isMajor ? 156 : (225 + minorTier * 32)}px`,
+                      height: `${isMajor ? (isMobile ? 106 : 156) : (isMobile ? (150 + minorTier * 22) : (225 + minorTier * 32))}px`,
                       borderLeft: `1px dashed ${isMajor ? 'rgba(45,212,191,0.25)' : 'rgba(255,255,255,0.1)'}`,
                       pointerEvents: 'none',
                       zIndex: 2,
@@ -540,7 +558,7 @@ export function TrackView() {
                     <div
                       style={{
                         position: 'absolute',
-                        top: `${TRACK_TOP + 172}px`,
+                        top: `${trackTop + (isMobile ? 120 : 172)}px`,
                         left: '-52px',
                         width: '104px',
                         textAlign: 'center',
@@ -550,7 +568,7 @@ export function TrackView() {
                         userSelect: 'none',
                         zIndex: 10,
                         background: 'linear-gradient(180deg, rgba(15,23,42,0.95), rgba(8,13,26,0.95))',
-                        padding: '5px 6px',
+                        padding: '4px 6px',
                         borderRadius: '10px',
                         border: '1.5px solid rgba(45,212,191,0.45)',
                         boxShadow: '0 6px 16px rgba(0,0,0,0.6), 0 0 10px rgba(45,212,191,0.15)',
@@ -587,7 +605,7 @@ export function TrackView() {
                     <div
                       style={{
                         position: 'absolute',
-                        top: `${TRACK_TOP + 234 + minorTier * 32}px`,
+                        top: `${trackTop + (isMobile ? (158 + minorTier * 24) : (234 + minorTier * 32))}px`,
                         left: '-44px',
                         width: '88px',
                         textAlign: 'center',
@@ -595,7 +613,7 @@ export function TrackView() {
                         userSelect: 'none',
                         zIndex: 9,
                         background: 'rgba(15,23,42,0.88)',
-                        padding: '3px 5px',
+                        padding: '2px 5px',
                         borderRadius: '8px',
                         border: '1px solid rgba(255,255,255,0.12)',
                         boxShadow: '0 3px 10px rgba(0,0,0,0.4)',
@@ -636,7 +654,7 @@ export function TrackView() {
                 key={`${train.trainNumber}-${i}`}
                 train={train}
                 x={x}
-                trackTop={TRACK_TOP}
+                trackTop={trackTop}
                 tier={tier}
                 yOffset={yOffset}
               />
@@ -646,7 +664,7 @@ export function TrackView() {
             {trains.length === 0 && (
               <div style={{
                 position: 'absolute',
-                top: `${TRACK_TOP - 20}px`,
+                top: `${trackTop - 20}px`,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 color: 'var(--text-muted)',
@@ -659,6 +677,43 @@ export function TrackView() {
           </div>
         </div>
       </div>
+
+      {/* Dedicated Scroll Affordance Button (ensures new users never get stuck in schematic view) */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: '8px',
+        marginBottom: '4px',
+      }}>
+        <button
+          onClick={() => {
+            const el = document.getElementById('train-list-section');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+          className="btn btn-ghost"
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '20px',
+            padding: '5px 14px',
+            fontSize: '0.74rem',
+            fontWeight: '700',
+            color: 'var(--accent-teal)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+          }}
+        >
+          <span>📋 View Train Cards & Filters ({trains.length})</span>
+          <span style={{ fontSize: '0.85rem' }}>↓</span>
+        </button>
+      </div>
+
     </div>
   );
 }

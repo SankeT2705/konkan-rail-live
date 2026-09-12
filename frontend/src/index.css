@@ -236,9 +236,10 @@ code, pre { font-family: var(--font-mono); }
   cursor: grab;
   user-select: none;
   position: relative;
-  touch-action: pan-x;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(56,189,248,0.3) rgba(15,22,41,0.6);
 }

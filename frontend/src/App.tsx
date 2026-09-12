@@ -62,12 +62,13 @@ function HomePage() {
       )}
 
       {/* Search + Filter toolbar */}
-      <div style={{
+      <div id="train-list-section" style={{
         padding: '12px 16px',
         background: 'var(--bg-surface)',
         borderTop: '1px solid var(--border-subtle)',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center',
+        scrollMarginTop: '65px',
       }}>
         <SearchBar />
         <FilterChips />
