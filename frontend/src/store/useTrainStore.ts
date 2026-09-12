@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { TrainPosition, Theme, Language, ViewMode, FilterCategory, FilterDirection } from '../types';
 import { STATIONS, type Station } from '../data/stations';
+import { getEffectiveDirection } from '../lib/trainUtils';
 
 interface TrainStore {
   // Data
@@ -66,7 +67,7 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
   showDelayedOnly: false,
 
   setTrains: (trains, meta) => set({
-    trains,
+    trains: trains.map(t => ({ ...t, direction: getEffectiveDirection(t) })),
     stale: meta.stale,
     staleSinceMinutes: meta.staleSinceMinutes,
     lastScrapeAt: meta.lastScrapeAt,
@@ -74,7 +75,11 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
     isLoading: false,
   }),
 
-  applyWsDiff: (trains, stale) => set({ trains, stale, isLoading: false }),
+  applyWsDiff: (trains, stale) => set({
+    trains: trains.map(t => ({ ...t, direction: getEffectiveDirection(t) })),
+    stale,
+    isLoading: false
+  }),
 
   setWsConnected: (v) => set({ wsConnected: v }),
   setLoading: (v) => set({ isLoading: v }),

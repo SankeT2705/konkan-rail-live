@@ -34,24 +34,23 @@ describe('parseTrainsFromHtml', () => {
     expect(result.trains.length).toBe(5);
   });
 
-  it('should correctly parse train 12133 (odd) as UP direction', () => {
+  it('should correctly parse train 12133 (odd) as DOWN direction (Southbound)', () => {
     result = parseTrainsFromHtml(fixtureHtml, now);
     const train = result.trains.find(t => t.trainNumber === '12133');
     expect(train).toBeDefined();
-    expect(train!.direction).toBe('up'); // 12133 is odd → up (Mangalore→Roha direction pair)
+    expect(train!.direction).toBe('down'); // 12133 is odd → down (CSMT→Mangalore Southbound)
   });
 
-  it('train 12134 (even) should be DOWN direction', () => {
+  it('train 12134 (even) should be UP direction (Northbound)', () => {
     result = parseTrainsFromHtml(fixtureHtml, now);
     const train = result.trains.find(t => t.trainNumber === '12134');
-    expect(train!.direction).toBe('down'); // 12134 is even → down (Roha→Mangalore)
+    expect(train!.direction).toBe('up'); // 12134 is even → up (Mangalore→CSMT Northbound)
   });
 
-
-  it('train 11003 (odd) should be up direction', () => {
+  it('train 11003 (odd) should be down direction (Southbound)', () => {
     result = parseTrainsFromHtml(fixtureHtml, now);
     const train = result.trains.find(t => t.trainNumber === '11003');
-    expect(train!.direction).toBe('up');
+    expect(train!.direction).toBe('down');
   });
 
   it('should parse positive delay correctly (12133 = +15 min)', () => {

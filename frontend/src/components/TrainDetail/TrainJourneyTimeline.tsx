@@ -1,7 +1,13 @@
 import { motion } from 'framer-motion';
-import { STATIONS } from '../../data/stations';
 import type { TrainPosition } from '../../types';
-import { getRouteProgress, getDirectionDetails, formatDelay, calculateExpectedTime } from '../../lib/trainUtils';
+import {
+  getRouteProgress,
+  getDirectionDetails,
+  formatDelay,
+  calculateExpectedTime,
+  getEffectiveDirection,
+  getTrainRouteStations,
+} from '../../lib/trainUtils';
 
 interface TrainJourneyTimelineProps {
   train: TrainPosition;
@@ -9,14 +15,15 @@ interface TrainJourneyTimelineProps {
 }
 
 export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelineProps) {
-  const isDown = train.direction === 'down';
+  const direction = getEffectiveDirection(train);
+  const isDown = direction === 'down';
   const routeProgress = getRouteProgress(train, language);
-  const dirDetails = getDirectionDetails(train.direction, language);
+  const dirDetails = getDirectionDetails(direction, language);
 
-  // Stations in direction of train travel
-  const routeStations = isDown ? STATIONS : [...STATIONS].reverse();
+  // Exact stations strictly along this train's KR route in true direction of travel
+  const routeStations = getTrainRouteStations(train);
 
-  // Find index of current station
+  // Find index of current station in the train's route
   const currentStationIndex = routeStations.findIndex(
     s => s.code === train.lastStationCode || s.name.toLowerCase() === train.lastStationName.toLowerCase()
   );
@@ -28,20 +35,23 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
 
   const safeActiveIndex = activeIndex !== -1 ? activeIndex : 0;
 
-  // Filter to a clean set of stations to prevent overwhelming the card:
-  // Always include:
-  // 1. First 2 stations of the route
-  // 2. 2 stations before current
-  // 3. Current station
-  // 4. 3 stations immediately ahead of current
-  // 5. All major junctions along the remaining route
-  // 6. Final destination station
-  const displayStations = routeStations.filter((st, idx) => {
-    if (idx === 0 || idx === routeStations.length - 1) return true;
-    if (st.type === 'major') return true;
-    if (Math.abs(idx - safeActiveIndex) <= 2) return true;
-    return false;
-  });
+  // Filter to a clean set of stations along this train's route:
+  // If route has <= 10 stations, show all of them!
+  // If route is long, show:
+  // - First 2 stations of route
+  // - 2 stations before current
+  // - Current station
+  // - 3 stations ahead
+  // - All major junctions along remaining route
+  // - Final destination station
+  const displayStations = routeStations.length <= 10
+    ? routeStations
+    : routeStations.filter((st, idx) => {
+        if (idx === 0 || idx === routeStations.length - 1) return true;
+        if (st.type === 'major') return true;
+        if (Math.abs(idx - safeActiveIndex) <= 2) return true;
+        return false;
+      });
 
   return (
     <div style={{

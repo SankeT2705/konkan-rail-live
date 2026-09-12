@@ -1,4 +1,5 @@
 import type { TrainPosition } from '../types';
+import { STATIONS, type Station } from '../data/stations';
 
 export interface TrainEndpoints {
   sourceCode: string;
@@ -98,10 +99,45 @@ export const STATION_NAMES: Record<string, { name: string; nameHi: string; kmOff
 };
 
 /**
+ * Resolves the true physical travel direction of a train ('up' = Northbound to Mumbai/Roha, 'down' = Southbound to Goa/Mangaluru).
+ * Fixes parity bugs and name-direction mismatches.
+ */
+export function getEffectiveDirection(train: { trainNumber: string; trainName: string; direction?: 'up' | 'down' }): 'up' | 'down' {
+  const name = (train.trainName || '').toUpperCase();
+
+  // 1. Explicit "SRC-DEST" pattern in name (e.g. "MAO-CSMT", "CSMT-MAO", "DR-KUDL", "KUDL-DR", "SWV-LTT")
+  const match = name.match(/\b([A-Z]{2,5})\s*[-–]\s*([A-Z]{2,5})\b/);
+  if (match) {
+    const src = STATION_NAMES[match[1]];
+    const dest = STATION_NAMES[match[2]];
+    if (src && dest && src.kmOffset !== dest.kmOffset) {
+      // If src is south of dest (e.g. MAO 436 > CSMT -140), train is moving North ('up')
+      return src.kmOffset < dest.kmOffset ? 'down' : 'up';
+    }
+  }
+
+  // 2. Specific named train directions
+  const num = parseInt(train.trainNumber, 10);
+  if (!isNaN(num)) {
+    // Northern Railway trains (Mangala, Kerala Sampark Kranti)
+    if (num === 12618 || num === 12218 || num === 12978) return 'down';
+    if (num === 12617 || num === 12217 || num === 12977) return 'up';
+
+    // Standard Konkan / Central Railway convention:
+    // Even train numbers terminate in Mumbai/Delhi (UP, Northbound)
+    // Odd train numbers terminate in Goa/Mangaluru/Kerala (DOWN, Southbound)
+    return num % 2 === 0 ? 'up' : 'down';
+  }
+
+  return train.direction || 'down';
+}
+
+/**
  * Extract human-readable source and destination from train name or code conventions.
  */
 export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'): TrainEndpoints {
   const name = train.trainName.toUpperCase();
+  const isDown = getEffectiveDirection(train) === 'down';
 
   // 1. Try pattern: "SRC-DEST" or "SRC - DEST" e.g. "CSMT-SWV SPL", "SWV-LTT SPL", "MAJN-ADI SPECIA"
   const match = name.match(/\b([A-Z]{2,5})\s*[-–]\s*([A-Z]{2,5})\b/);
@@ -127,7 +163,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
 
   // 2. Named train heuristics
   if (name.includes('KERALA') && name.includes('KRANTI')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'CDG' : 'KCVL',
       sourceName: isDown ? (lang === 'hi' ? 'चंदिगढ' : 'Chandigarh') : (lang === 'hi' ? 'कोचुवेली (केरळ)' : 'Kochuveli (Kerala)'),
@@ -139,7 +174,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('MANGALA')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'NZM' : 'ERS',
       sourceName: isDown ? (lang === 'hi' ? 'हजरत निजामुद्दीन' : 'Delhi Nizamuddin') : (lang === 'hi' ? 'एर्नाकुलम (कोची)' : 'Ernakulam (Kochi)'),
@@ -151,7 +185,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('NETRAVA')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'LTT' : 'TVC',
       sourceName: isDown ? (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT') : (lang === 'hi' ? 'तिरुवनंतपुरम' : 'Thiruvananthapuram'),
@@ -163,7 +196,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('MATSYAG')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'LTT' : 'MAQ',
       sourceName: isDown ? (lang === 'hi' ? 'मुंबई एलटीटी' : 'Mumbai LTT') : (lang === 'hi' ? 'मंगळूरु सेंट्रल' : 'Mangaluru Central'),
@@ -175,7 +207,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('KONKAN') && name.includes('KANYA')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'CSMT' : 'MAO',
       sourceName: isDown ? (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT') : (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)'),
@@ -187,7 +218,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('MANDOVI')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'CSMT' : 'MAO',
       sourceName: isDown ? (lang === 'hi' ? 'मुंबई सीएसएमटी' : 'Mumbai CSMT') : (lang === 'hi' ? 'मडगाव जंक्शन' : 'Madgaon (Goa)'),
@@ -199,7 +229,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('TUTARI')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'DR' : 'SWV',
       sourceName: isDown ? (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)') : (lang === 'hi' ? 'सावंतवाडी रोड' : 'Sawantwadi Road'),
@@ -211,7 +240,6 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
   }
 
   if (name.includes('RATNAGIRI') || name.includes('RN PASS')) {
-    const isDown = train.direction === 'down';
     return {
       sourceCode: isDown ? 'DR' : 'RN',
       sourceName: isDown ? (lang === 'hi' ? 'दादर (मुंबई)' : 'Dadar (Mumbai)') : (lang === 'hi' ? 'रत्नागिरी' : 'Ratnagiri'),
@@ -222,8 +250,8 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
     };
   }
 
-  // 3. Fallback based on Konkan Railway route
-  if (train.direction === 'down') {
+  // 3. Fallback based on resolved direction
+  if (isDown) {
     return {
       sourceCode: 'ROHA',
       sourceName: lang === 'hi' ? 'रोहा' : 'Roha',
@@ -249,6 +277,7 @@ export function getTrainEndpoints(train: TrainPosition, lang: 'en' | 'hi' = 'en'
  * remaining distance, and progress percentage.
  */
 export function getRouteProgress(train: TrainPosition, lang: 'en' | 'hi' = 'en'): RouteProgress {
+  const direction = getEffectiveDirection(train);
   const endpoints = getTrainEndpoints(train, lang);
   const src = STATION_NAMES[endpoints.sourceCode];
   const dest = STATION_NAMES[endpoints.destCode];
@@ -266,7 +295,7 @@ export function getRouteProgress(train: TrainPosition, lang: 'en' | 'hi' = 'en')
   // Calculate distance covered based on current train position
   let coveredKm = 0;
   if (src && dest) {
-    if (src.kmOffset <= dest.kmOffset) {
+    if (direction === 'down') {
       // Southbound: train moving from smaller offset (North) to larger offset (South)
       coveredKm = krSectorKm - src.kmOffset;
     } else {
@@ -274,7 +303,7 @@ export function getRouteProgress(train: TrainPosition, lang: 'en' | 'hi' = 'en')
       coveredKm = src.kmOffset - krSectorKm;
     }
   } else {
-    coveredKm = train.direction === 'down' ? krSectorKm : Math.max(0, 738 - krSectorKm);
+    coveredKm = direction === 'down' ? krSectorKm : Math.max(0, 738 - krSectorKm);
   }
 
   coveredKm = Math.max(0, Math.min(totalRouteKm, Math.round(coveredKm)));
@@ -292,9 +321,66 @@ export function getRouteProgress(train: TrainPosition, lang: 'en' | 'hi' = 'en')
     remainingKm,
     progressPercent,
     routeSummary: endpoints.routeSummary,
-    direction: train.direction,
+    direction: direction,
     krSectorKm,
   };
+}
+
+/**
+ * Returns the exact stations on this train's Konkan Railway journey in order of travel.
+ * Never includes stations before the train's KR origin or after the train's KR destination.
+ */
+export function getTrainRouteStations(train: TrainPosition): Station[] {
+  const endpoints = getTrainEndpoints(train);
+  const src = STATION_NAMES[endpoints.sourceCode];
+  const dest = STATION_NAMES[endpoints.destCode];
+  const direction = getEffectiveDirection(train);
+  const isDown = direction === 'down';
+
+  // Determine KR start and end boundaries (0 to 738 km)
+  let startKrKm = 0;
+  let endKrKm = 738;
+
+  if (isDown) {
+    // Southbound: Roha/North -> South
+    if (src && src.kmOffset >= 0 && src.kmOffset <= 738) {
+      startKrKm = src.kmOffset;
+    } else {
+      startKrKm = 0;
+    }
+
+    if (dest && dest.kmOffset >= 0 && dest.kmOffset <= 738) {
+      endKrKm = dest.kmOffset;
+    } else {
+      endKrKm = 738;
+    }
+  } else {
+    // Northbound: South -> Roha/North
+    if (src && src.kmOffset >= 0 && src.kmOffset <= 738) {
+      startKrKm = src.kmOffset;
+    } else {
+      startKrKm = 738;
+    }
+
+    if (dest && dest.kmOffset >= 0 && dest.kmOffset <= 738) {
+      endKrKm = dest.kmOffset;
+    } else {
+      endKrKm = 0;
+    }
+  }
+
+  const minKm = Math.min(startKrKm, endKrKm, train.progressKm);
+  const maxKm = Math.max(startKrKm, endKrKm, train.progressKm);
+
+  // Filter STATIONS strictly within [minKm - 2, maxKm + 2]
+  const inRange = STATIONS.filter(s => s.km >= (minKm - 2) && s.km <= (maxKm + 2));
+
+  // Sequence according to travel direction
+  if (isDown) {
+    return inRange.sort((a, b) => a.km - b.km);
+  } else {
+    return inRange.sort((a, b) => b.km - a.km);
+  }
 }
 
 /**

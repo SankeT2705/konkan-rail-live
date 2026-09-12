@@ -94,12 +94,30 @@ function inferCategory(trainNumber: string, trainName: string): TrainCategory {
 }
 
 /**
- * Konkan Railway convention: even train numbers go South (Roha → Mangalore = "down"),
- * odd numbers go North (Mangalore → Roha = "up").
- * This is the standard Indian Railways convention for Southern direction = even.
+ * Konkan Railway / Central Railway convention:
+ * 1. If train name has SRC-DEST (e.g. MAO-CSMT, CSMT-MAO), compare source and destination locations.
+ * 2. In Indian Railways on Central/Western/Konkan Railway:
+ *    - Even numbers (e.g. 20112, 10104, 10112, 12134, 12052, 12620, 16346) run UP towards Mumbai/Delhi (Northbound = 'up').
+ *    - Odd numbers (e.g. 20111, 10103, 10111, 12133, 12051, 12619, 16345) run DOWN away from Mumbai/Delhi (Southbound = 'down').
  */
-export function inferDirection(trainNumber: string): Direction {
-  return parseInt(trainNumber, 10) % 2 === 0 ? 'down' : 'up';
+export function inferDirection(trainNumber: string, trainName: string = ''): Direction {
+  const name = trainName.toUpperCase();
+  const match = name.match(/\b([A-Z]{2,5})\s*[-–]\s*([A-Z]{2,5})\b/);
+  if (match) {
+    const isSrcNorth = ['CSMT', 'LTT', 'DR', 'BDTS', 'MMCT', 'BSR', 'PUNE', 'PNVL', 'NZM', 'NDLS', 'ADI', 'ST'].includes(match[1]);
+    const isDestNorth = ['CSMT', 'LTT', 'DR', 'BDTS', 'MMCT', 'BSR', 'PUNE', 'PNVL', 'NZM', 'NDLS', 'ADI', 'ST'].includes(match[2]);
+    if (isSrcNorth && !isDestNorth) return 'down';
+    if (!isSrcNorth && isDestNorth) return 'up';
+  }
+
+  const num = parseInt(trainNumber, 10);
+  if (!isNaN(num)) {
+    if (num === 12618 || num === 12218 || num === 12978) return 'down';
+    if (num === 12617 || num === 12217 || num === 12977) return 'up';
+    return num % 2 === 0 ? 'up' : 'down';
+  }
+
+  return 'down';
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -236,7 +254,7 @@ export function parseTrainsFromHtml(html: string, scrapedAt: Date): ScrapeResult
     if (!trainNumber) return;
 
     const station = findStationByName(stationRaw);
-    const direction = inferDirection(trainNumber);
+    const direction = inferDirection(trainNumber, trainName);
 
     let status: TrainPosition['status'] = 'running';
     const statusUp = statusRaw.toUpperCase();
