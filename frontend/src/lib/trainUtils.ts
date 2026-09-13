@@ -508,6 +508,12 @@ export interface StationTimingInfo {
 /**
  * Derives accurate, authentic timetable and delay-adjusted timing information
  * for any station along a train's journey matching Google Transit structure.
+ *
+ * Key principles:
+ *  - Past stations: use actual time from history if available; otherwise show scheduled time only (honest)
+ *  - Current station: use API actualTime for arrived/departed; keep arrival <= departure order
+ *  - Upcoming stations: scheduled + effective delay (derived from most-recent history snapshot, not just delayMinutes)
+ *  - Delay colors: per-station based on that station's delay, not a global flag
  */
 export function getStationTimingDetails(
   train: TrainPosition,
@@ -546,7 +552,22 @@ export function getStationTimingDetails(
     status = hasPassed ? 'passed' : 'upcoming';
   }
 
-  const delayMinutes = train.delayMinutes || 0;
+  // ── Derive effective delay ──────────────────────────────────────────────────
+  // The API's train.delayMinutes can be stale or incorrect (e.g. shows 0 when
+  // the train is actually 60+ min late). Use the most recent history snapshot's
+  // delay_minutes as a more reliable source.
+  const historyArr = options?.history ?? [];
+  const effectiveDelayMinutes = (() => {
+    if (historyArr.length > 0) {
+      // History is stored newest-first (recordHistory uses unshift)
+      for (const h of historyArr) {
+        if (h.delay_minutes !== undefined) return h.delay_minutes;
+      }
+    }
+    return train.delayMinutes ?? 0;
+  })();
+
+  const delayMinutes = effectiveDelayMinutes;
   const delayText = formatDelay(delayMinutes, { lang });
 
   const isOrigin = thisStationIndex === 0;
@@ -556,87 +577,123 @@ export function getStationTimingDetails(
   let scheduledDeparture = '';
   let actualOrExpectedArrival = '';
   let actualOrExpectedDeparture = '';
+  // Per-station delay flags
+  let isArrivalDelayed = false;
+  let isDepartureDelayed = false;
 
   const transitMins = calculateTransitMinutes(distanceKm, train.category);
+  const haltMins = stop?.haltMinutes ?? 2;
 
   if (isOrigin) {
     scheduledArrival = '';
     actualOrExpectedArrival = '';
-    scheduledDeparture = stop?.dep && stop.dep !== 'Dest' ? stop.dep : '08:30';
+    scheduledDeparture = stop?.dep && stop.dep !== 'Dest' ? stop.dep : '';
     if (status === 'current' || status === 'passed') {
-      actualOrExpectedDeparture = train.actualTime || addMinutesToTime(scheduledDeparture, delayMinutes);
+      // Use API's actual reported time if available
+      actualOrExpectedDeparture = train.actualTime || (scheduledDeparture ? addMinutesToTime(scheduledDeparture, delayMinutes) : '');
     } else {
-      actualOrExpectedDeparture = addMinutesToTime(scheduledDeparture, delayMinutes);
+      actualOrExpectedDeparture = scheduledDeparture ? addMinutesToTime(scheduledDeparture, delayMinutes) : '';
     }
+    isDepartureDelayed = delayMinutes > 5;
+
   } else if (isDestination) {
     scheduledDeparture = '';
     actualOrExpectedDeparture = '';
     scheduledArrival = stop?.arr && stop.arr !== 'Origin' ? stop.arr : (stop?.dep || '');
     if (!scheduledArrival) {
+      // Estimate from transit time
       const totalTransit = calculateTransitMinutes(Math.abs(738 - train.progressKm), train.category);
       scheduledArrival = addMinutesToTime(train.actualTime, totalTransit - delayMinutes);
     }
     actualOrExpectedArrival = addMinutesToTime(scheduledArrival, delayMinutes);
+    isArrivalDelayed = delayMinutes > 5;
+
   } else {
-    // Intermediate station
+    // ── Intermediate station ────────────────────────────────────────────────
     if (stop) {
       scheduledArrival = stop.arr !== 'Origin' ? stop.arr : stop.dep;
       scheduledDeparture = stop.dep !== 'Dest' ? stop.dep : stop.arr;
+    } else if (status === 'passed') {
+      // For a passed station with no schedule data, we can't estimate backward
+      // reliably, so leave scheduled blank (will show only if history provides)
+      scheduledArrival = '';
+      scheduledDeparture = '';
     } else {
-      const estTime = status === 'passed'
-        ? addMinutesToTime(train.actualTime, -transitMins)
-        : addMinutesToTime(train.actualTime, transitMins);
-      scheduledArrival = addMinutesToTime(estTime, -delayMinutes);
-      scheduledDeparture = addMinutesToTime(scheduledArrival, 2);
+      // Upcoming or current station with no schedule: estimate from transit
+      const estScheduled = status === 'current'
+        ? addMinutesToTime(train.actualTime, -delayMinutes)   // actualTime - delay = scheduled
+        : addMinutesToTime(train.actualTime, transitMins - delayMinutes);
+      scheduledArrival = estScheduled;
+      scheduledDeparture = addMinutesToTime(estScheduled, haltMins);
     }
 
     if (status === 'current') {
+      // Use the API's directly reported time for whatever event just occurred
       if (train.status === 'arrived') {
+        // Train arrived: actualTime = arrival time
         actualOrExpectedArrival = train.actualTime;
+        // Expected departure = scheduled departure + delay
         actualOrExpectedDeparture = scheduledDeparture
           ? addMinutesToTime(scheduledDeparture, delayMinutes)
-          : addMinutesToTime(train.actualTime, 2);
+          : addMinutesToTime(train.actualTime, haltMins);
       } else if (train.status === 'departed') {
+        // Train departed: actualTime = departure time
         actualOrExpectedDeparture = train.actualTime;
+        // Compute arrival as departure - haltMins (always <= departure)
         actualOrExpectedArrival = scheduledArrival
-          ? addMinutesToTime(scheduledArrival, delayMinutes)
+          ? addMinutesToTime(train.actualTime, -haltMins)   // departed - halt = arrived
           : train.actualTime;
       } else {
+        // Running (between stations) — use delay-adjusted scheduled times
         actualOrExpectedArrival = scheduledArrival
           ? addMinutesToTime(scheduledArrival, delayMinutes)
           : train.actualTime;
         actualOrExpectedDeparture = scheduledDeparture
           ? addMinutesToTime(scheduledDeparture, delayMinutes)
-          : train.actualTime;
+          : addMinutesToTime(actualOrExpectedArrival, haltMins);
       }
+      isArrivalDelayed = delayMinutes > 5;
+      isDepartureDelayed = delayMinutes > 5;
+
     } else if (status === 'passed') {
-      const hist = options?.history?.find(h => h.station_code === station.code);
+      // ── Past station: use history if we have it, else show scheduled only ──
+      const hist = historyArr.find(h => h.station_code === station.code);
       if (hist && hist.actual_time) {
+        // Real historical data available
+        const histDelay = hist.delay_minutes ?? delayMinutes;
         actualOrExpectedDeparture = hist.actual_time;
+        // Arrival = departure - halt (ensure logical ordering)
         actualOrExpectedArrival = scheduledArrival
-          ? addMinutesToTime(scheduledArrival, hist.delay_minutes ?? delayMinutes)
-          : hist.actual_time;
+          ? addMinutesToTime(scheduledArrival, histDelay)
+          : addMinutesToTime(hist.actual_time, -haltMins);
+        isArrivalDelayed = histDelay > 5;
+        isDepartureDelayed = histDelay > 5;
+      } else if (scheduledArrival) {
+        // No history for this station — show scheduled times only, neutral (no red)
+        // Don't apply current delay to past stations we have no data for
+        actualOrExpectedArrival = scheduledArrival;
+        actualOrExpectedDeparture = scheduledDeparture || addMinutesToTime(scheduledArrival, haltMins);
+        isArrivalDelayed = false;
+        isDepartureDelayed = false;
       } else {
-        actualOrExpectedArrival = scheduledArrival
-          ? addMinutesToTime(scheduledArrival, delayMinutes)
-          : addMinutesToTime(train.actualTime, -transitMins);
-        actualOrExpectedDeparture = scheduledDeparture
-          ? addMinutesToTime(scheduledDeparture, delayMinutes)
-          : addMinutesToTime(actualOrExpectedArrival, 2);
+        // No schedule, no history — leave blank rather than guess
+        actualOrExpectedArrival = '';
+        actualOrExpectedDeparture = '';
       }
+
     } else {
-      // Upcoming
+      // ── Upcoming station ────────────────────────────────────────────────────
+      // Expected = scheduled + effective delay (correct and honest)
       actualOrExpectedArrival = scheduledArrival
         ? addMinutesToTime(scheduledArrival, delayMinutes)
         : addMinutesToTime(train.actualTime, transitMins);
       actualOrExpectedDeparture = scheduledDeparture
         ? addMinutesToTime(scheduledDeparture, delayMinutes)
-        : addMinutesToTime(actualOrExpectedArrival, 2);
+        : addMinutesToTime(actualOrExpectedArrival, haltMins);
+      isArrivalDelayed = delayMinutes > 5;
+      isDepartureDelayed = delayMinutes > 5;
     }
   }
-
-  const isArrivalDelayed = delayMinutes > 5;
-  const isDepartureDelayed = delayMinutes > 5;
 
   return {
     stationCode: station.code,
@@ -657,6 +714,8 @@ export function getStationTimingDetails(
     distanceKmFromTrain: distanceKm,
   };
 }
+
+
 
 /**
  * Calculates realistic expected arrival time (HH:mm) at an upcoming station

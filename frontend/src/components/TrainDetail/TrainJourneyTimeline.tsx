@@ -58,6 +58,17 @@ export function TrainJourneyTimeline({ train, language, history }: TrainJourneyT
     );
   }, [train, routeStations, safeActiveIndex, history, language]);
 
+  // Derive effective delay from the most recent history snapshot.
+  // The KR API's train.delayMinutes can be 0/stale even when the train is
+  // significantly late. History snapshots (stored newest-first) are more reliable.
+  const effectiveDelayMinutes = useMemo(() => {
+    const h = (history || train.history) ?? [];
+    for (const snap of h) {
+      if (snap.delay_minutes !== undefined) return snap.delay_minutes;
+    }
+    return train.delayMinutes ?? 0;
+  }, [train, history]);
+
   // Build timeline items with collapsible intermediate stops between major halts
   const { timelineItems, defaultExpandedSegments } = useMemo(() => {
     const items: TimelineItem[] = [];
@@ -149,7 +160,7 @@ export function TrainJourneyTimeline({ train, language, history }: TrainJourneyT
     return now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
   }, []);
 
-  const isDelayed = train.delayMinutes > 5;
+  const isDelayed = effectiveDelayMinutes > 5;
 
   return (
     <div style={{
@@ -228,7 +239,7 @@ export function TrainJourneyTimeline({ train, language, history }: TrainJourneyT
             gap: '4px',
           }}>
             <span>{isDelayed ? '🔴' : '🟢'}</span>
-            <span>{train.delayMinutes <= 0 ? 'On Schedule' : formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}</span>
+            <span>{effectiveDelayMinutes <= 0 ? 'On Schedule' : formatDelay(effectiveDelayMinutes, { showUnit: 'long', lang: language })}</span>
           </div>
         </div>
       </div>
@@ -425,7 +436,7 @@ export function TrainJourneyTimeline({ train, language, history }: TrainJourneyT
                             fontWeight: '800',
                           }}
                         >
-                          <span>{isDelayed ? `+${train.delayMinutes} min delay` : 'On time'}</span>
+                          <span>{isDelayed ? `+${effectiveDelayMinutes} min late` : 'On time'}</span>
                           <span>·</span>
                           <span style={{ textTransform: 'capitalize', color: '#ffffff' }}>{train.status || 'running'}</span>
                           {train.actualTime && <span style={{ color: '#cbd5e1' }}>({train.actualTime})</span>}

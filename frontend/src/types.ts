@@ -27,6 +27,8 @@ export interface HistorySnapshot {
   timestamp: string;
   delay_minutes: number;
   station_code: string;
+  actual_time?: string;  // Actual reported time at this station (HH:mm)
+  status?: string;       // API status string: 'arrived' | 'departed' | 'running'
 }
 
 export interface ApiTrainsResponse {
