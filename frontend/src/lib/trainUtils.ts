@@ -490,8 +490,15 @@ export interface StationTimingInfo {
   stationCode: string;
   stationName: string;
   status: 'passed' | 'current' | 'upcoming';
-  scheduledTime: string;        // "HH:mm"
-  expectedOrActualTime: string;  // "HH:mm"
+  scheduledArrival: string;          // "HH:mm" or "" (Origin)
+  actualOrExpectedArrival: string;   // "HH:mm" or ""
+  isArrivalDelayed: boolean;
+  scheduledDeparture: string;        // "HH:mm" or "" (Dest)
+  actualOrExpectedDeparture: string; // "HH:mm" or ""
+  isDepartureDelayed: boolean;
+  // Legacy fields for compatibility
+  scheduledTime: string;             // "HH:mm"
+  expectedOrActualTime: string;      // "HH:mm"
   delayMinutes: number;
   delayText: string;
   isOfficialStop: boolean;
@@ -500,7 +507,7 @@ export interface StationTimingInfo {
 
 /**
  * Derives accurate, authentic timetable and delay-adjusted timing information
- * for any station along a train's journey.
+ * for any station along a train's journey matching Google Transit structure.
  */
 export function getStationTimingDetails(
   train: TrainPosition,
@@ -542,56 +549,108 @@ export function getStationTimingDetails(
   const delayMinutes = train.delayMinutes || 0;
   const delayText = formatDelay(delayMinutes, { lang });
 
-  let scheduledTime = '';
-  let expectedOrActualTime = '';
+  const isOrigin = thisStationIndex === 0;
+  const isDestination = thisStationIndex === routeStations.length - 1;
 
-  if (status === 'current') {
-    expectedOrActualTime = train.actualTime || 'Live';
-    if (stop) {
-      scheduledTime = stop.arr !== 'Origin' ? stop.arr : stop.dep;
-    } else if (train.scheduledDeparture) {
-      scheduledTime = train.scheduledDeparture;
+  let scheduledArrival = '';
+  let scheduledDeparture = '';
+  let actualOrExpectedArrival = '';
+  let actualOrExpectedDeparture = '';
+
+  const transitMins = calculateTransitMinutes(distanceKm, train.category);
+
+  if (isOrigin) {
+    scheduledArrival = '';
+    actualOrExpectedArrival = '';
+    scheduledDeparture = stop?.dep && stop.dep !== 'Dest' ? stop.dep : '08:30';
+    if (status === 'current' || status === 'passed') {
+      actualOrExpectedDeparture = train.actualTime || addMinutesToTime(scheduledDeparture, delayMinutes);
     } else {
-      scheduledTime = addMinutesToTime(train.actualTime, -delayMinutes);
+      actualOrExpectedDeparture = addMinutesToTime(scheduledDeparture, delayMinutes);
     }
-  } else if (status === 'passed') {
-    // Check if recorded in recent snapshot history
-    const hist = options?.history?.find(h => h.station_code === station.code);
-    if (hist && hist.actual_time) {
-      expectedOrActualTime = hist.actual_time;
-      if (stop) {
-        scheduledTime = stop.dep !== 'Dest' ? stop.dep : stop.arr;
-      } else {
-        scheduledTime = addMinutesToTime(expectedOrActualTime, -(hist.delay_minutes ?? delayMinutes));
-      }
-    } else {
-      if (stop) {
-        scheduledTime = stop.dep !== 'Dest' ? stop.dep : stop.arr;
-        expectedOrActualTime = addMinutesToTime(scheduledTime, delayMinutes);
-      } else {
-        const transitMins = calculateTransitMinutes(distanceKm, train.category);
-        expectedOrActualTime = addMinutesToTime(train.actualTime, -transitMins);
-        scheduledTime = addMinutesToTime(expectedOrActualTime, -delayMinutes);
-      }
+  } else if (isDestination) {
+    scheduledDeparture = '';
+    actualOrExpectedDeparture = '';
+    scheduledArrival = stop?.arr && stop.arr !== 'Origin' ? stop.arr : (stop?.dep || '');
+    if (!scheduledArrival) {
+      const totalTransit = calculateTransitMinutes(Math.abs(738 - train.progressKm), train.category);
+      scheduledArrival = addMinutesToTime(train.actualTime, totalTransit - delayMinutes);
     }
+    actualOrExpectedArrival = addMinutesToTime(scheduledArrival, delayMinutes);
   } else {
-    // Upcoming station
-    const transitMins = calculateTransitMinutes(distanceKm, train.category);
+    // Intermediate station
     if (stop) {
-      scheduledTime = stop.arr !== 'Origin' ? stop.arr : stop.dep;
-      expectedOrActualTime = addMinutesToTime(scheduledTime, delayMinutes);
+      scheduledArrival = stop.arr !== 'Origin' ? stop.arr : stop.dep;
+      scheduledDeparture = stop.dep !== 'Dest' ? stop.dep : stop.arr;
     } else {
-      expectedOrActualTime = addMinutesToTime(train.actualTime, transitMins);
-      scheduledTime = addMinutesToTime(expectedOrActualTime, -delayMinutes);
+      const estTime = status === 'passed'
+        ? addMinutesToTime(train.actualTime, -transitMins)
+        : addMinutesToTime(train.actualTime, transitMins);
+      scheduledArrival = addMinutesToTime(estTime, -delayMinutes);
+      scheduledDeparture = addMinutesToTime(scheduledArrival, 2);
+    }
+
+    if (status === 'current') {
+      if (train.status === 'arrived') {
+        actualOrExpectedArrival = train.actualTime;
+        actualOrExpectedDeparture = scheduledDeparture
+          ? addMinutesToTime(scheduledDeparture, delayMinutes)
+          : addMinutesToTime(train.actualTime, 2);
+      } else if (train.status === 'departed') {
+        actualOrExpectedDeparture = train.actualTime;
+        actualOrExpectedArrival = scheduledArrival
+          ? addMinutesToTime(scheduledArrival, delayMinutes)
+          : train.actualTime;
+      } else {
+        actualOrExpectedArrival = scheduledArrival
+          ? addMinutesToTime(scheduledArrival, delayMinutes)
+          : train.actualTime;
+        actualOrExpectedDeparture = scheduledDeparture
+          ? addMinutesToTime(scheduledDeparture, delayMinutes)
+          : train.actualTime;
+      }
+    } else if (status === 'passed') {
+      const hist = options?.history?.find(h => h.station_code === station.code);
+      if (hist && hist.actual_time) {
+        actualOrExpectedDeparture = hist.actual_time;
+        actualOrExpectedArrival = scheduledArrival
+          ? addMinutesToTime(scheduledArrival, hist.delay_minutes ?? delayMinutes)
+          : hist.actual_time;
+      } else {
+        actualOrExpectedArrival = scheduledArrival
+          ? addMinutesToTime(scheduledArrival, delayMinutes)
+          : addMinutesToTime(train.actualTime, -transitMins);
+        actualOrExpectedDeparture = scheduledDeparture
+          ? addMinutesToTime(scheduledDeparture, delayMinutes)
+          : addMinutesToTime(actualOrExpectedArrival, 2);
+      }
+    } else {
+      // Upcoming
+      actualOrExpectedArrival = scheduledArrival
+        ? addMinutesToTime(scheduledArrival, delayMinutes)
+        : addMinutesToTime(train.actualTime, transitMins);
+      actualOrExpectedDeparture = scheduledDeparture
+        ? addMinutesToTime(scheduledDeparture, delayMinutes)
+        : addMinutesToTime(actualOrExpectedArrival, 2);
     }
   }
+
+  const isArrivalDelayed = delayMinutes > 5;
+  const isDepartureDelayed = delayMinutes > 5;
 
   return {
     stationCode: station.code,
     stationName: lang === 'hi' ? station.nameHi : station.name,
     status,
-    scheduledTime,
-    expectedOrActualTime,
+    scheduledArrival,
+    actualOrExpectedArrival,
+    isArrivalDelayed,
+    scheduledDeparture,
+    actualOrExpectedDeparture,
+    isDepartureDelayed,
+    // Legacy fields for compatibility
+    scheduledTime: scheduledArrival || scheduledDeparture,
+    expectedOrActualTime: actualOrExpectedArrival || actualOrExpectedDeparture,
     delayMinutes,
     delayText,
     isOfficialStop,
