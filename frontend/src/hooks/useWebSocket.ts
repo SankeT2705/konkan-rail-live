@@ -1,49 +1,124 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useTrainStore } from '../store/useTrainStore';
-import { API_URL, WS_URL } from '../lib/api';
+import { API_URL, WS_URL, SAME_ORIGIN_URL } from '../lib/api';
+import fallbackData from '../data/fallbackTrains.json';
 
-const RECONNECT_DELAY = 5000;
+const REST_POLL_INTERVAL = 25_000;
+const WS_RECONNECT_DELAY = 10_000;
 
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const { applyWsDiff, setTrains, setWsConnected } = useTrainStore();
+  const pollTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const isFetching = useRef<boolean>(false);
 
-  useEffect(() => {
-    // Initial fetch via REST to immediately populate UI without waiting for WS handshake
-    fetch(`${API_URL}/api/trains`)
-      .then(res => res.json())
-      .then(res => {
+  const {
+    applyWsDiff,
+    setTrains,
+    setWsConnected,
+    setIsRestConnected,
+    setFetchError,
+    setLoading,
+  } = useTrainStore();
+
+  const fetchWithTimeout = async (url: string, timeoutMs = 6000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
+  };
+
+  const fetchTrains = useCallback(async () => {
+    if (isFetching.current) return;
+    isFetching.current = true;
+
+    // Build candidates list
+    const candidates: string[] = [];
+    if (API_URL) {
+      candidates.push(`${API_URL}/api/trains`);
+    }
+    const relativeUrl = `${SAME_ORIGIN_URL}/api/trains`;
+    if (!candidates.includes(relativeUrl)) {
+      candidates.push(relativeUrl);
+    }
+    // Also try plain relative path
+    if (!candidates.includes('/api/trains')) {
+      candidates.push('/api/trains');
+    }
+
+    let success = false;
+    for (const url of candidates) {
+      try {
+        const res = await fetchWithTimeout(url, 6000);
         const list = res.trains ?? res.data ?? [];
         if (Array.isArray(list) && list.length > 0) {
           setTrains(list, {
             stale: res.stale ?? false,
             staleSinceMinutes: res.staleSinceMinutes ?? 0,
-            lastScrapeAt: res.lastScrapeAt ?? '',
+            lastScrapeAt: res.lastScrapeAt ?? new Date().toISOString(),
             lastUpdateAtUpstream: res.lastUpdateAtUpstream ?? '',
           });
+          setIsRestConnected(true);
+          setFetchError(null);
+          success = true;
+          break;
         }
-      })
-      .catch(err => console.warn('[api] Initial REST fetch error, relying on WS:', err));
+      } catch {
+        // Try next candidate
+      }
+    }
 
-    function connect() {
+    if (!success) {
+      // Fallback if no candidate worked and we have no trains yet
+      if (useTrainStore.getState().trains.length === 0) {
+        console.warn('[api] All remote endpoints failed. Loading cached fallback dataset.');
+        setTrains(fallbackData.trains as any, {
+          stale: true,
+          staleSinceMinutes: 5,
+          lastScrapeAt: fallbackData.lastScrapeAt,
+          lastUpdateAtUpstream: fallbackData.lastUpdateAtUpstream,
+        });
+        setFetchError('Live feed unreachable. Showing scheduled trains fallback.');
+      }
+      setIsRestConnected(false);
+      setLoading(false);
+    }
+
+    isFetching.current = false;
+  }, [setTrains, setIsRestConnected, setFetchError, setLoading]);
+
+  useEffect(() => {
+    // 1. Immediate initial fetch
+    fetchTrains();
+
+    // 2. Setup WebSocket if WS_URL is available
+    function connectWs() {
+      if (!WS_URL) return;
+
       try {
         ws.current = new WebSocket(WS_URL);
       } catch (e) {
-        console.error('[ws] Failed to connect:', e);
-        scheduleReconnect();
+        console.warn('[ws] Failed to initialize WebSocket:', e);
+        scheduleWsReconnect();
         return;
       }
 
       ws.current.onopen = () => {
-        console.log('[ws] Connected');
+        console.log('[ws] Connected to live train stream');
         setWsConnected(true);
       };
 
       ws.current.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-
           if (msg.type === 'snapshot') {
             setTrains(msg.trains ?? [], {
               stale: msg.stale ?? false,
@@ -60,26 +135,36 @@ export function useWebSocket() {
       };
 
       ws.current.onerror = () => {
-        console.warn('[ws] Error');
+        console.warn('[ws] Connection error');
       };
 
       ws.current.onclose = () => {
-        console.log('[ws] Disconnected. Reconnecting...');
         setWsConnected(false);
-        scheduleReconnect();
+        scheduleWsReconnect();
       };
     }
 
-    function scheduleReconnect() {
+    function scheduleWsReconnect() {
       clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
+      if (WS_URL) {
+        reconnectTimer.current = setTimeout(connectWs, WS_RECONNECT_DELAY);
+      }
     }
 
-    connect();
+    connectWs();
+
+    // 3. Regular REST polling fallback (active when WS is disconnected or unsupported)
+    pollTimer.current = setInterval(() => {
+      const state = useTrainStore.getState();
+      if (!state.wsConnected) {
+        fetchTrains();
+      }
+    }, REST_POLL_INTERVAL);
 
     return () => {
       clearTimeout(reconnectTimer.current);
+      clearInterval(pollTimer.current);
       ws.current?.close();
     };
-  }, [applyWsDiff, setTrains, setWsConnected]);
+  }, [fetchTrains, applyWsDiff, setTrains, setWsConnected]);
 }

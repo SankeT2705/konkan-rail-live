@@ -1,40 +1,58 @@
 /**
  * Centralized API & WebSocket configuration for production and development.
- * Automatically handles protocol upgrades (http -> https, ws -> wss)
- * and intelligent fallbacks.
+ * Automatically handles protocol upgrades (http -> https, ws -> wss),
+ * same-origin Vercel serverless deployments, and intelligent fallbacks.
  */
+
+function isDummyPlaceholder(url?: string): boolean {
+  if (!url) return true;
+  return (
+    url.includes('konkan-rail-backend.onrender.com') ||
+    url.includes('your-backend-domain') ||
+    url.includes('api.yourdomain.com')
+  );
+}
 
 function getResolvedEndpoints() {
   const isBrowser = typeof window !== 'undefined';
-  const isHttps = isBrowser && window.location.protocol === 'https:';
-  const host = isBrowser ? window.location.hostname : 'localhost';
+  const isLocalhost = isBrowser && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const currentOrigin = isBrowser ? window.location.origin : 'http://localhost:5173';
 
-  // 1. Check explicitly injected environment variables
-  const envApi = import.meta.env.VITE_API_URL;
-  const envWs = import.meta.env.VITE_WS_URL;
+  // Explicitly injected environment variables
+  const envApi = import.meta.env.VITE_API_URL?.trim();
+  const envWs = import.meta.env.VITE_WS_URL?.trim();
 
-  let apiUrl = envApi;
-  if (!apiUrl) {
-    // In local dev or unconfigured deployment, use port 3001
-    apiUrl = `${isHttps ? 'https' : 'http'}://${host}:3001`;
-  }
+  let apiUrl = '';
+  let wsUrl = '';
 
-  let wsUrl = envWs;
-  if (!wsUrl) {
-    // If API URL is provided, derive WebSocket URL automatically from it
-    if (apiUrl.startsWith('https://')) {
-      wsUrl = apiUrl.replace('https://', 'wss://') + '/ws/trains';
-    } else if (apiUrl.startsWith('http://')) {
-      wsUrl = apiUrl.replace('http://', 'ws://') + '/ws/trains';
+  if (isLocalhost) {
+    // Local development mode
+    apiUrl = (envApi && !isDummyPlaceholder(envApi)) ? envApi : 'http://localhost:3001';
+    wsUrl = envWs || 'ws://localhost:3001/ws/trains';
+  } else {
+    // Deployed / Production mode (e.g. Vercel)
+    if (envApi && !isDummyPlaceholder(envApi) && !envApi.includes('localhost')) {
+      apiUrl = envApi.replace(/\/+$/, '');
+      if (envWs) {
+        wsUrl = envWs;
+      } else if (apiUrl.startsWith('https://')) {
+        wsUrl = apiUrl.replace('https://', 'wss://') + '/ws/trains';
+      } else if (apiUrl.startsWith('http://')) {
+        wsUrl = apiUrl.replace('http://', 'ws://') + '/ws/trains';
+      }
     } else {
-      wsUrl = `${isHttps ? 'wss' : 'ws'}://${host}:3001/ws/trains`;
+      // In production without external backend, use same-origin (Vercel serverless API)
+      apiUrl = currentOrigin;
+      // Vercel serverless does not maintain persistent WebSockets; use polling
+      wsUrl = envWs && !isDummyPlaceholder(envWs) ? envWs : '';
     }
   }
 
   return {
     API_URL: apiUrl.replace(/\/+$/, ''),
     WS_URL: wsUrl,
+    SAME_ORIGIN_URL: currentOrigin.replace(/\/+$/, ''),
   };
 }
 
-export const { API_URL, WS_URL } = getResolvedEndpoints();
+export const { API_URL, WS_URL, SAME_ORIGIN_URL } = getResolvedEndpoints();
