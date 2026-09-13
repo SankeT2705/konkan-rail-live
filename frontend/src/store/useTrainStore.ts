@@ -47,15 +47,32 @@ interface TrainStore {
 const savedTheme = (localStorage.getItem('kr-theme') as Theme) ?? 'dark';
 const savedLanguage = (localStorage.getItem('kr-lang') as Language) ?? 'en';
 
+function getInitialCachedTrains(): { trains: TrainPosition[]; lastScrapeAt: string } {
+  try {
+    const raw = localStorage.getItem('kr-trains-cache');
+    if (!raw) return { trains: [], lastScrapeAt: '' };
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.trains) && parsed.trains.length > 0) {
+      return {
+        trains: parsed.trains.map((t: TrainPosition) => ({ ...t, direction: getEffectiveDirection(t) })),
+        lastScrapeAt: parsed.lastScrapeAt ?? '',
+      };
+    }
+  } catch (_) {}
+  return { trains: [], lastScrapeAt: '' };
+}
+
+const initialCached = typeof window !== 'undefined' ? getInitialCachedTrains() : { trains: [], lastScrapeAt: '' };
+
 export const useTrainStore = create<TrainStore>((set, get) => ({
-  trains: [],
+  trains: initialCached.trains,
   stations: STATIONS,
-  stale: false,
+  stale: initialCached.trains.length > 0,
   staleSinceMinutes: 0,
-  lastScrapeAt: '',
+  lastScrapeAt: initialCached.lastScrapeAt,
   lastUpdateAtUpstream: '',
   wsConnected: false,
-  isLoading: true,
+  isLoading: initialCached.trains.length === 0,
   selectedTrainNumber: null,
   selectedStationCode: null,
   theme: savedTheme,
@@ -66,20 +83,40 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
   filterDirection: 'all',
   showDelayedOnly: false,
 
-  setTrains: (trains, meta) => set({
-    trains: trains.map(t => ({ ...t, direction: getEffectiveDirection(t) })),
-    stale: meta.stale,
-    staleSinceMinutes: meta.staleSinceMinutes,
-    lastScrapeAt: meta.lastScrapeAt,
-    lastUpdateAtUpstream: meta.lastUpdateAtUpstream,
-    isLoading: false,
-  }),
+  setTrains: (trains, meta) => {
+    const processed = trains.map(t => ({ ...t, direction: getEffectiveDirection(t) }));
+    try {
+      localStorage.setItem('kr-trains-cache', JSON.stringify({
+        trains: processed,
+        lastScrapeAt: meta.lastScrapeAt,
+        cachedAt: Date.now(),
+      }));
+    } catch (_) {}
+    set({
+      trains: processed,
+      stale: meta.stale,
+      staleSinceMinutes: meta.staleSinceMinutes,
+      lastScrapeAt: meta.lastScrapeAt,
+      lastUpdateAtUpstream: meta.lastUpdateAtUpstream,
+      isLoading: false,
+    });
+  },
 
-  applyWsDiff: (trains, stale) => set({
-    trains: trains.map(t => ({ ...t, direction: getEffectiveDirection(t) })),
-    stale,
-    isLoading: false
-  }),
+  applyWsDiff: (trains, stale) => {
+    const processed = trains.map(t => ({ ...t, direction: getEffectiveDirection(t) }));
+    try {
+      localStorage.setItem('kr-trains-cache', JSON.stringify({
+        trains: processed,
+        lastScrapeAt: new Date().toISOString(),
+        cachedAt: Date.now(),
+      }));
+    } catch (_) {}
+    set({
+      trains: processed,
+      stale,
+      isLoading: false,
+    });
+  },
 
   setWsConnected: (v) => set({ wsConnected: v }),
   setLoading: (v) => set({ isLoading: v }),

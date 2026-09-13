@@ -9,7 +9,7 @@ export function Header() {
   const {
     theme, setTheme, language, setLanguage,
     viewMode, setViewMode, wsConnected,
-    lastScrapeAt,
+    trains, lastScrapeAt,
   } = useTrainStore();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
@@ -95,11 +95,11 @@ export function Header() {
           className="hide-mobile">
           <div style={{
             width: '8px', height: '8px', borderRadius: '50%',
-            background: wsConnected ? '#22c55e' : '#ef4444',
-            boxShadow: wsConnected ? '0 0 6px #22c55e' : '0 0 6px #ef4444',
+            background: wsConnected ? '#22c55e' : (trains.length > 0 ? '#eab308' : '#ef4444'),
+            boxShadow: wsConnected ? '0 0 6px #22c55e' : (trains.length > 0 ? '0 0 6px #eab308' : '0 0 6px #ef4444'),
             flexShrink: 0,
           }} />
-          {wsConnected ? 'Live' : 'Reconnecting...'}
+          {wsConnected ? 'Live' : (trains.length > 0 ? 'Syncing...' : 'Connecting...')}
           {timeSince !== null && (
             <span>· {t.lastUpdated} {timeSince}s {t.ago}</span>
           )}
