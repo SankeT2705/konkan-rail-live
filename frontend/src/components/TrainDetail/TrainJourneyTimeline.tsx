@@ -1,20 +1,23 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { TrainPosition } from '../../types';
 import {
   getRouteProgress,
   getDirectionDetails,
   formatDelay,
-  calculateExpectedTime,
   getEffectiveDirection,
   getTrainRouteStations,
+  getStationTimingDetails,
 } from '../../lib/trainUtils';
 
 interface TrainJourneyTimelineProps {
   train: TrainPosition;
   language: 'en' | 'hi';
+  history?: Array<{ station_code: string; actual_time?: string; delay_minutes?: number }>;
 }
 
-export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelineProps) {
+export function TrainJourneyTimeline({ train, language, history }: TrainJourneyTimelineProps) {
+  const [showAllStations, setShowAllStations] = useState(false);
   const direction = getEffectiveDirection(train);
   const isDown = direction === 'down';
   const routeProgress = getRouteProgress(train, language);
@@ -35,21 +38,27 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
 
   const safeActiveIndex = activeIndex !== -1 ? activeIndex : 0;
 
-  // Filter to a clean set of stations along this train's route:
-  // If route has <= 10 stations, show all of them!
-  // If route is long, show:
-  // - First 2 stations of route
+  // Filter stations based on user toggle:
+  // Default clean view:
+  // - First station of route
   // - 2 stations before current
   // - Current station
   // - 3 stations ahead
-  // - All major junctions along remaining route
+  // - All official stops & major junctions along remaining route
   // - Final destination station
-  const displayStations = routeStations.length <= 10
+  const displayStations = showAllStations || routeStations.length <= 12
     ? routeStations
     : routeStations.filter((st, idx) => {
         if (idx === 0 || idx === routeStations.length - 1) return true;
         if (st.type === 'major') return true;
         if (Math.abs(idx - safeActiveIndex) <= 2) return true;
+        const timing = getStationTimingDetails(train, st, {
+          routeStations,
+          safeActiveIndex,
+          history: history || train.history,
+          lang: language,
+        });
+        if (timing.isOfficialStop) return true;
         return false;
       });
 
@@ -97,29 +106,56 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
           </div>
         </div>
 
-        {/* Live delay tag */}
-        <div style={{
-          fontSize: '0.72rem',
-          fontWeight: '800',
-          padding: '3px 8px',
-          borderRadius: '6px',
-          background: train.delayMinutes > 5 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-          color: train.delayMinutes > 5 ? '#ef4444' : '#22c55e',
-          border: `1px solid ${train.delayMinutes > 5 ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
-        }}>
-          {train.delayMinutes <= 0 ? '🟢 On Schedule' : `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`}
+        {/* Right side: Station toggle + Live delay tag */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {routeStations.length > 12 && (
+            <button
+              type="button"
+              onClick={() => setShowAllStations(!showAllStations)}
+              style={{
+                background: showAllStations ? 'rgba(56,189,248,0.2)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${showAllStations ? 'rgba(56,189,248,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                color: showAllStations ? '#38bdf8' : 'var(--text-secondary)',
+                fontSize: '0.65rem',
+                fontWeight: '700',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+            >
+              {showAllStations ? 'Show Key Stops Only' : `Show All ${routeStations.length} Stations`}
+            </button>
+          )}
+
+          <div style={{
+            fontSize: '0.72rem',
+            fontWeight: '800',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            background: train.delayMinutes > 5 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+            color: train.delayMinutes > 5 ? '#ef4444' : '#22c55e',
+            border: `1px solid ${train.delayMinutes > 5 ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+          }}>
+            {train.delayMinutes <= 0 ? '🟢 On Schedule' : `🔴 ${formatDelay(train.delayMinutes, { showUnit: 'long', lang: language })}`}
+          </div>
         </div>
       </div>
 
       {/* Graphical Timeline Track */}
       <div style={{ position: 'relative', paddingLeft: '28px' }}>
         {displayStations.map((st, i) => {
-          const originalIndex = routeStations.findIndex(s => s.code === st.code);
-          const isPassed = originalIndex < safeActiveIndex;
-          const isCurrent = originalIndex === safeActiveIndex;
-          const isUpcoming = originalIndex > safeActiveIndex;
+          const timing = getStationTimingDetails(train, st, {
+            routeStations,
+            safeActiveIndex,
+            history: history || train.history,
+            lang: language,
+          });
 
-          const distanceDiff = Math.abs(st.km - train.progressKm);
+          const isPassed = timing.status === 'passed';
+          const isCurrent = timing.status === 'current';
+          const isUpcoming = timing.status === 'upcoming';
+          const distanceDiff = timing.distanceKmFromTrain;
 
           return (
             <div
@@ -177,7 +213,7 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
 
               {/* Station Details */}
               <div style={{ flex: 1, paddingRight: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <span style={{
                     fontWeight: isCurrent ? '900' : '700',
                     fontSize: isCurrent ? '0.88rem' : '0.78rem',
@@ -193,8 +229,20 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
                   }}>
                     {st.code} · {st.km} km
                   </span>
+                  {timing.isOfficialStop && (
+                    <span style={{
+                      fontSize: '0.55rem',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: '#cbd5e1',
+                      fontWeight: '700',
+                    }}>
+                      🛑 Halt
+                    </span>
+                  )}
                   {st.type === 'major' && (
-                    <span style={{ fontSize: '0.6rem', color: '#f59e0b' }}>⭐</span>
+                    <span style={{ fontSize: '0.6rem', color: '#f59e0b' }} title="Major Junction">⭐</span>
                   )}
                 </div>
 
@@ -228,28 +276,46 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
               {/* Right timing / distance column */}
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 {isPassed && (
-                  <div style={{
-                    fontSize: '0.68rem',
-                    color: '#22c55e',
-                    fontWeight: '700',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '3px',
-                    justifyContent: 'flex-end',
-                  }}>
-                    <span>✓ Crossed</span>
+                  <div>
+                    <div style={{
+                      fontSize: '0.74rem',
+                      color: '#22c55e',
+                      fontWeight: '800',
+                      fontFamily: 'var(--font-mono)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      justifyContent: 'flex-end',
+                    }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: '700' }}>✓ Crossed</span>
+                      <span>{timing.expectedOrActualTime}</span>
+                    </div>
+                    {timing.scheduledTime && (
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '1px' }}>
+                        Sch: {timing.scheduledTime}
+                      </div>
+                    )}
                   </div>
                 )}
+
                 {isCurrent && (
-                  <div style={{
-                    fontSize: '0.72rem',
-                    color: '#38bdf8',
-                    fontWeight: '800',
-                    fontFamily: 'var(--font-mono)',
-                  }}>
-                    {train.actualTime || 'Live'}
+                  <div>
+                    <div style={{
+                      fontSize: '0.78rem',
+                      color: '#38bdf8',
+                      fontWeight: '900',
+                      fontFamily: 'var(--font-mono)',
+                    }}>
+                      {timing.expectedOrActualTime}
+                    </div>
+                    {timing.scheduledTime && (
+                      <div style={{ fontSize: '0.62rem', color: 'var(--accent-teal)', fontWeight: '700', marginTop: '1px' }}>
+                        Sch: {timing.scheduledTime}
+                      </div>
+                    )}
                   </div>
                 )}
+
                 {isUpcoming && (
                   <div>
                     <div style={{
@@ -263,7 +329,7 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
                       gap: '4px',
                       justifyContent: 'flex-end',
                     }}>
-                      <span>{calculateExpectedTime(train.actualTime || train.scheduledArrival, distanceDiff, train.category)}</span>
+                      <span>{timing.expectedOrActualTime}</span>
                       <span style={{
                         fontSize: '0.58rem',
                         color: 'rgba(56,189,248,0.95)',
@@ -274,8 +340,8 @@ export function TrainJourneyTimeline({ train, language }: TrainJourneyTimelinePr
                         fontWeight: '700',
                       }}>EXP</span>
                     </div>
-                    <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '1px' }}>
-                      in {distanceDiff} km
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: '600', marginTop: '1px' }}>
+                      {timing.scheduledTime ? `Sch: ${timing.scheduledTime} · ` : ''}in {distanceDiff} km
                     </div>
                   </div>
                 )}

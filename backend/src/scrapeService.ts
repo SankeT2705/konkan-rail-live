@@ -160,6 +160,27 @@ export function parseDelay(raw: string): number {
   return 0;
 }
 
+/**
+ * Calculates scheduled time given the actual reported time and current delay.
+ * Scheduled = Actual - Delay.
+ * Handles modulo 24 hours / 1440 minutes wrap-around cleanly.
+ */
+export function calculateScheduledTime(actualTimeStr: string, delayMinutes: number): string {
+  if (!actualTimeStr || !actualTimeStr.includes(':')) return actualTimeStr || '';
+  const [hStr, mStr] = actualTimeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return actualTimeStr;
+
+  const actualTotalMins = h * 60 + m;
+  const scheduledTotalMins = actualTotalMins - delayMinutes;
+  const normalizedMins = ((scheduledTotalMins % 1440) + 1440) % 1440;
+
+  const schH = Math.floor(normalizedMins / 60);
+  const schM = normalizedMins % 60;
+  return `${String(schH).padStart(2, '0')}:${String(schM).padStart(2, '0')}`;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // HTML parser
 // ──────────────────────────────────────────────────────────────────────────────
@@ -264,6 +285,7 @@ export function parseTrainsFromHtml(html: string, scrapedAt: Date): ScrapeResult
     const delayMinutes = parseDelay(delayRaw);
     const progressKm = station?.km ?? (direction === 'down' ? 0 : ROUTE_TOTAL_KM);
     const parsedActual = parseTime(timeRaw);
+    const calculatedScheduled = calculateScheduledTime(parsedActual, delayMinutes);
 
     const train: TrainPosition = {
       trainNumber,
@@ -273,8 +295,8 @@ export function parseTrainsFromHtml(html: string, scrapedAt: Date): ScrapeResult
       lastStationCode: station?.code ?? stationRaw.toUpperCase().slice(0, 5),
       lastStationName: station?.name ?? stationRaw,
       status,
-      scheduledArrival: parsedActual,
-      scheduledDeparture: parsedActual,
+      scheduledArrival: calculatedScheduled,
+      scheduledDeparture: calculatedScheduled,
       actualTime: parsedActual,
       delayMinutes,
       progressKm,

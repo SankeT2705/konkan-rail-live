@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parseTrainsFromHtml } from '../src/scrapeService';
+import { parseTrainsFromHtml, calculateScheduledTime } from '../src/scrapeService';
 
 const fixtureHtml = readFileSync(
   join(__dirname, '../fixtures/sample.html'),
@@ -121,5 +121,27 @@ describe('parseTrainsFromHtml', () => {
     midRouteTrains.forEach(t => {
       expect(t.progressKm).toBeGreaterThan(0);
     });
+
+    // Train 11004 (TUTARI): Actual is 00:28 with 69 min delay (1:9), so Scheduled should be 23:19
+    expect(tutari!.actualTime).toBe('00:28');
+    expect(tutari!.scheduledArrival).toBe('23:19');
+    expect(tutari!.scheduledDeparture).toBe('23:19');
+  });
+
+  it('calculateScheduledTime should subtract delay correctly across midnight', () => {
+    // 00:30 with 211 min delay (3:31) -> 20:59 previous day
+    expect(calculateScheduledTime('00:30', 211)).toBe('20:59');
+
+    // 00:28 with 69 min delay (1:09) -> 23:19
+    expect(calculateScheduledTime('00:28', 69)).toBe('23:19');
+
+    // 14:00 with 0 delay -> 14:00
+    expect(calculateScheduledTime('14:00', 0)).toBe('14:00');
+
+    // 14:00 with -10 min delay (early) -> 14:10
+    expect(calculateScheduledTime('14:00', -10)).toBe('14:10');
+
+    // 15:30 with +45 min delay -> 14:45
+    expect(calculateScheduledTime('15:30', 45)).toBe('14:45');
   });
 });

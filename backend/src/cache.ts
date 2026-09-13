@@ -65,6 +65,8 @@ interface HistoryRow {
   timestamp: string;
   delay_minutes: number;
   station_code: string;
+  actual_time?: string;
+  status?: string;
 }
 
 const MAX_HISTORY = 20;
@@ -78,6 +80,8 @@ export function recordHistory(train: TrainPosition): void {
     timestamp: train.lastUpdatedAt,
     delay_minutes: train.delayMinutes,
     station_code: train.lastStationCode,
+    actual_time: train.actualTime,
+    status: train.status,
   });
   if (existing.length > MAX_HISTORY) existing.length = MAX_HISTORY;
   _history.set(train.trainNumber, existing);

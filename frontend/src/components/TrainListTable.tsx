@@ -165,7 +165,7 @@ export function TrainListTable() {
                       transition={{ duration: 0.2 }}
                       style={{ overflow: 'hidden' }}
                     >
-                      <TrainJourneyTimeline train={train} language={language} />
+                      <TrainJourneyTimeline train={train} language={language} history={train.history} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -311,7 +311,7 @@ export function TrainListTable() {
                       overflow: 'hidden',
                     }}
                   >
-                    <TrainJourneyTimeline train={train} language={language} />
+                    <TrainJourneyTimeline train={train} language={language} history={train.history} />
                   </motion.div>
                 )}
               </AnimatePresence>

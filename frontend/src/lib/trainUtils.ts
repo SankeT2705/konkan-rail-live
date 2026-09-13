@@ -1,5 +1,6 @@
 import type { TrainPosition } from '../types';
 import { STATIONS, type Station } from '../data/stations';
+import { getOfficialTrainSchedule } from '../data/trainSchedules';
 
 export interface TrainEndpoints {
   sourceCode: string;
@@ -452,44 +453,167 @@ export function formatDelay(
 }
 
 /**
- * Calculates realistic expected arrival time (HH:mm) at an upcoming station
- * based on current station time, distance remaining, and train category speed profile.
+ * Adds or subtracts minutes from an "HH:mm" time string, wrapping cleanly across 24h.
  */
-export function calculateExpectedTime(
-  baseTimeStr: string | undefined,
-  distanceKm: number,
-  category?: string
-): string {
-  let baseHours = 0;
-  let baseMinutes = 0;
-
-  if (baseTimeStr && baseTimeStr.includes(':')) {
-    const parts = baseTimeStr.split(':').map(p => parseInt(p, 10));
-    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
-      baseHours = parts[0];
-      baseMinutes = parts[1];
-    }
-  } else {
+export function addMinutesToTime(timeStr: string | undefined, minutes: number): string {
+  if (!timeStr || !timeStr.includes(':')) {
     const now = new Date();
-    baseHours = now.getHours();
-    baseMinutes = now.getMinutes();
+    const total = now.getHours() * 60 + now.getMinutes() + minutes;
+    const norm = ((total % 1440) + 1440) % 1440;
+    return `${String(Math.floor(norm / 60)).padStart(2, '0')}:${String(norm % 60).padStart(2, '0')}`;
   }
+  const [hStr, mStr] = timeStr.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return timeStr;
 
-  // Average commercial speed along Konkan Railway (single track cuttings & halts)
+  const total = h * 60 + m + minutes;
+  const norm = ((total % 1440) + 1440) % 1440;
+  const hh = Math.floor(norm / 60);
+  const mm = norm % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/**
+ * Calculates transit time between stations in minutes based on distance and train speed profile.
+ */
+export function calculateTransitMinutes(distanceKm: number, category?: string): number {
   const speed = category === 'premium' ? 75
     : category === 'superfast' ? 65
     : category === 'express' ? 55
     : category === 'passenger' ? 45
     : 50;
+  return Math.max(2, Math.round(distanceKm / (speed / 60)));
+}
 
-  // Transit time in minutes (minimum 2 mins)
-  const transitMinutes = Math.max(2, Math.round(distanceKm / (speed / 60)));
+export interface StationTimingInfo {
+  stationCode: string;
+  stationName: string;
+  status: 'passed' | 'current' | 'upcoming';
+  scheduledTime: string;        // "HH:mm"
+  expectedOrActualTime: string;  // "HH:mm"
+  delayMinutes: number;
+  delayText: string;
+  isOfficialStop: boolean;
+  distanceKmFromTrain: number;
+}
 
-  const totalMinutes = baseHours * 60 + baseMinutes + transitMinutes;
-  const expHours = Math.floor(totalMinutes / 60) % 24;
-  const expMins = totalMinutes % 60;
+/**
+ * Derives accurate, authentic timetable and delay-adjusted timing information
+ * for any station along a train's journey.
+ */
+export function getStationTimingDetails(
+  train: TrainPosition,
+  station: Station,
+  options?: {
+    history?: Array<{ station_code: string; actual_time?: string; delay_minutes?: number }>;
+    routeStations?: Station[];
+    safeActiveIndex?: number;
+    lang?: 'en' | 'hi';
+  }
+): StationTimingInfo {
+  const lang = options?.lang || 'en';
+  const distanceKm = Math.abs(station.km - train.progressKm);
+  const schedule = getOfficialTrainSchedule(train.trainNumber);
+  const stop = schedule?.stops.find(s => s.stationCode === station.code);
+  const isOfficialStop = Boolean(stop) || station.type === 'major';
 
-  const hh = String(expHours).padStart(2, '0');
-  const mm = String(expMins).padStart(2, '0');
-  return `${hh}:${mm}`;
+  // Determine relative position
+  const routeStations = options?.routeStations || getTrainRouteStations(train);
+  const currentStationIndex = options?.safeActiveIndex !== undefined
+    ? options.safeActiveIndex
+    : routeStations.findIndex(s => s.code === train.lastStationCode || s.name.toLowerCase() === train.lastStationName.toLowerCase());
+
+  const thisStationIndex = routeStations.findIndex(s => s.code === station.code);
+  const safeCurrentIndex = currentStationIndex !== -1 ? currentStationIndex : 0;
+
+  let status: 'passed' | 'current' | 'upcoming' = 'upcoming';
+  if (thisStationIndex !== -1 && thisStationIndex < safeCurrentIndex) {
+    status = 'passed';
+  } else if (thisStationIndex !== -1 && thisStationIndex === safeCurrentIndex) {
+    status = 'current';
+  } else if (thisStationIndex === -1) {
+    // Fallback based on physical travel direction
+    const isDown = getEffectiveDirection(train) === 'down';
+    const hasPassed = isDown ? station.km < train.progressKm : station.km > train.progressKm;
+    status = hasPassed ? 'passed' : 'upcoming';
+  }
+
+  const delayMinutes = train.delayMinutes || 0;
+  const delayText = formatDelay(delayMinutes, { lang });
+
+  let scheduledTime = '';
+  let expectedOrActualTime = '';
+
+  if (status === 'current') {
+    expectedOrActualTime = train.actualTime || 'Live';
+    if (stop) {
+      scheduledTime = stop.arr !== 'Origin' ? stop.arr : stop.dep;
+    } else if (train.scheduledDeparture) {
+      scheduledTime = train.scheduledDeparture;
+    } else {
+      scheduledTime = addMinutesToTime(train.actualTime, -delayMinutes);
+    }
+  } else if (status === 'passed') {
+    // Check if recorded in recent snapshot history
+    const hist = options?.history?.find(h => h.station_code === station.code);
+    if (hist && hist.actual_time) {
+      expectedOrActualTime = hist.actual_time;
+      if (stop) {
+        scheduledTime = stop.dep !== 'Dest' ? stop.dep : stop.arr;
+      } else {
+        scheduledTime = addMinutesToTime(expectedOrActualTime, -(hist.delay_minutes ?? delayMinutes));
+      }
+    } else {
+      if (stop) {
+        scheduledTime = stop.dep !== 'Dest' ? stop.dep : stop.arr;
+        expectedOrActualTime = addMinutesToTime(scheduledTime, delayMinutes);
+      } else {
+        const transitMins = calculateTransitMinutes(distanceKm, train.category);
+        expectedOrActualTime = addMinutesToTime(train.actualTime, -transitMins);
+        scheduledTime = addMinutesToTime(expectedOrActualTime, -delayMinutes);
+      }
+    }
+  } else {
+    // Upcoming station
+    const transitMins = calculateTransitMinutes(distanceKm, train.category);
+    if (stop) {
+      scheduledTime = stop.arr !== 'Origin' ? stop.arr : stop.dep;
+      expectedOrActualTime = addMinutesToTime(scheduledTime, delayMinutes);
+    } else {
+      expectedOrActualTime = addMinutesToTime(train.actualTime, transitMins);
+      scheduledTime = addMinutesToTime(expectedOrActualTime, -delayMinutes);
+    }
+  }
+
+  return {
+    stationCode: station.code,
+    stationName: lang === 'hi' ? station.nameHi : station.name,
+    status,
+    scheduledTime,
+    expectedOrActualTime,
+    delayMinutes,
+    delayText,
+    isOfficialStop,
+    distanceKmFromTrain: distanceKm,
+  };
+}
+
+/**
+ * Calculates realistic expected arrival time (HH:mm) at an upcoming station
+ * based on official train schedule (when available) + current delay,
+ * or transit time from current station.
+ */
+export function calculateExpectedTime(
+  baseTimeStr: string | undefined,
+  distanceKm: number,
+  category?: string,
+  delayMinutes: number = 0,
+  officialScheduledTime?: string
+): string {
+  if (officialScheduledTime && officialScheduledTime.includes(':')) {
+    return addMinutesToTime(officialScheduledTime, delayMinutes);
+  }
+  const transitMinutes = calculateTransitMinutes(distanceKm, category);
+  return addMinutesToTime(baseTimeStr, transitMinutes);
 }

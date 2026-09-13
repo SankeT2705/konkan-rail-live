@@ -387,7 +387,7 @@ export function TrainDetail() {
               </div>
 
               {/* Graphical Where Is My Train Journey */}
-              <TrainJourneyTimeline train={train} language={language} />
+              <TrainJourneyTimeline train={train} language={language} history={activeHistory} />
 
               {/* Delay Trend Sparkline */}
               {activeHistory && activeHistory.length >= 2 && (
