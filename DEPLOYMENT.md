@@ -43,22 +43,20 @@ This is the easiest and most popular setup for zero-cost hosting.
 
 ---
 
-### Step 2: Deploy on Vercel (Self-Contained Full-Stack Serverless)
-
-The project includes native Vercel Serverless Functions (`api/trains.ts` and `api/health.ts`). This means **Vercel can host the entire app (Frontend + API Scraper) without needing a separate backend server!**
+### Step 2: Deploy the Frontend on Vercel
 
 1. Sign in to [Vercel](https://vercel.com) and click **Add New...** ➔ **Project**.
 2. Select your repository.
 3. In the project setup screen:
    * **Framework Preset**: `Vite`
-   * **Root Directory**: Click `Edit` and select `frontend` (or keep root `./` as both are supported)
+   * **Root Directory**: Click `Edit` and select `frontend`
    * **Build Command**: `npm run build`
    * **Output Directory**: `dist`
-4. **Environment Variables** (Optional):
-   * If using the built-in Vercel serverless scraper, **leave `VITE_API_URL` blank / unset**. The app will automatically connect to its own same-origin `/api/trains` endpoint!
-   * If you have deployed a persistent WebSocket backend on Render/Railway, set `VITE_API_URL` to your backend URL (e.g. `https://your-custom-backend.onrender.com`). If that external backend is ever sleeping or down, the frontend automatically falls back to same-origin Vercel serverless endpoints.
+4. Expand **Environment Variables** and add:
+   * `VITE_API_URL`: `https://konkan-rail-backend.onrender.com` (your Render backend URL from Step 1)
+   *(Note: `VITE_WS_URL` is automatically derived as `wss://...` by the application).*
 5. Click **Deploy**.
-6. The included `vercel.json` automatically handles client-side SPA routing (`/train/:trainNumber` and `/station/:code`) and serverless API routing (`/api/*`).
+6. The included `frontend/vercel.json` automatically handles client-side SPA routing (`/train/:trainNumber` and `/station/:code`), ensuring direct URL navigation never produces a 404.
 
 ---
 

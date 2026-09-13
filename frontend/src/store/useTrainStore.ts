@@ -14,9 +14,6 @@ interface TrainStore {
 
   // UI state
   wsConnected: boolean;
-  isRestConnected: boolean;
-  lastSuccessfulFetchAt: number;
-  fetchError: string | null;
   isLoading: boolean;
   selectedTrainNumber: string | null;
   selectedStationCode: string | null;
@@ -32,8 +29,6 @@ interface TrainStore {
   setTrains: (trains: TrainPosition[], meta: { stale: boolean; staleSinceMinutes: number; lastScrapeAt: string; lastUpdateAtUpstream: string }) => void;
   applyWsDiff: (trains: TrainPosition[], stale: boolean) => void;
   setWsConnected: (v: boolean) => void;
-  setIsRestConnected: (v: boolean) => void;
-  setFetchError: (err: string | null) => void;
   setLoading: (v: boolean) => void;
   selectTrain: (num: string | null) => void;
   selectStation: (code: string | null) => void;
@@ -60,9 +55,6 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
   lastScrapeAt: '',
   lastUpdateAtUpstream: '',
   wsConnected: false,
-  isRestConnected: false,
-  lastSuccessfulFetchAt: 0,
-  fetchError: null,
   isLoading: true,
   selectedTrainNumber: null,
   selectedStationCode: null,
@@ -81,21 +73,15 @@ export const useTrainStore = create<TrainStore>((set, get) => ({
     lastScrapeAt: meta.lastScrapeAt,
     lastUpdateAtUpstream: meta.lastUpdateAtUpstream,
     isLoading: false,
-    isRestConnected: true,
-    lastSuccessfulFetchAt: Date.now(),
-    fetchError: null,
   }),
 
   applyWsDiff: (trains, stale) => set({
     trains: trains.map(t => ({ ...t, direction: getEffectiveDirection(t) })),
     stale,
-    isLoading: false,
-    lastSuccessfulFetchAt: Date.now(),
+    isLoading: false
   }),
 
   setWsConnected: (v) => set({ wsConnected: v }),
-  setIsRestConnected: (v) => set({ isRestConnected: v }),
-  setFetchError: (err) => set({ fetchError: err }),
   setLoading: (v) => set({ isLoading: v }),
   selectTrain: (num) => set({ selectedTrainNumber: num, selectedStationCode: null }),
   selectStation: (code) => set({ selectedStationCode: code, selectedTrainNumber: null }),

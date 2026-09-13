@@ -9,7 +9,6 @@ export function Header() {
   const {
     theme, setTheme, language, setLanguage,
     viewMode, setViewMode, wsConnected,
-    isRestConnected, stale,
     lastScrapeAt,
   } = useTrainStore();
   const [showThemeMenu, setShowThemeMenu] = useState(false);
@@ -20,9 +19,8 @@ export function Header() {
     { value: 'high-contrast', label: t.highContrast },
   ];
 
-  const isLive = wsConnected || isRestConnected;
   const timeSince = lastScrapeAt
-    ? Math.max(0, Math.floor((Date.now() - new Date(lastScrapeAt).getTime()) / 1000))
+    ? Math.floor((Date.now() - new Date(lastScrapeAt).getTime()) / 1000)
     : null;
 
   return (
@@ -92,16 +90,16 @@ export function Header() {
         {/* Spacer */}
         <div style={{ flex: 1, minWidth: '4px' }} />
 
-        {/* WS/REST indicator + last updated */}
+        {/* WS indicator + last updated */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}
           className="hide-mobile">
           <div style={{
             width: '8px', height: '8px', borderRadius: '50%',
-            background: isLive ? (stale ? '#eab308' : '#22c55e') : '#ef4444',
-            boxShadow: isLive ? (stale ? '0 0 6px #eab308' : '0 0 6px #22c55e') : '0 0 6px #ef4444',
+            background: wsConnected ? '#22c55e' : '#ef4444',
+            boxShadow: wsConnected ? '0 0 6px #22c55e' : '0 0 6px #ef4444',
             flexShrink: 0,
           }} />
-          {isLive ? (stale ? 'Live (Cached)' : (wsConnected ? 'Live (WS)' : 'Live')) : 'Connecting...'}
+          {wsConnected ? 'Live' : 'Reconnecting...'}
           {timeSince !== null && (
             <span>· {t.lastUpdated} {timeSince}s {t.ago}</span>
           )}
